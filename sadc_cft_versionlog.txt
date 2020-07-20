@@ -1,0 +1,44 @@
+v1.0.0 - 19 August 2019
+Initial version
+
+v1.1.0 - 20 August 2019
+Bugfix: Change minumum pixel per basin threshold to 15
+Bugfix: Correct format of zonegeojson forecast values in the attribute table
+Bugfix: Defined thread for processing, to resolve the GUI freezing issue 
+Update: Improve status messages
+Update: Clear zone vector by clicking on 
+Update: Rename "All Permutations" button to "All Combinations"
+Update: Rename "Stop" button to "Exit"
+Update: Check validity of CSV file format 
+Bugfix: Support French and Portuguese special characters on station names
+Feature: Add contingency table to regression outputs
+
+v1.1.1 - 21 August 2019
+Bugfix: Limit basin size to minimum 15 pixels if total number of basins > 13 
+
+v1.1.2 - 22 August 2019
+Bugfix: Allow non-unique key ID in Zone Vector
+Feature: Add box for zone vector name
+Feature: Update styles
+
+v1.2.0 - 23 August 2019
+Feature: Option to include/exclude Training period in model scoring/statistics
+Feature: Add Forward/Backward Stepwise Selection to replace Lasso Selection
+Feature: Option to adjust sensitivity (P-Value) of Stepwise Selection
+Bugfix: Terciles now based on training period
+Bugfix: Delete empty rows when importing station data
+Note:
+- Mean, Terciles, Correlation Maps, Basin Selection and Model are based only on Training Period
+- If "Include in Statistics" is checked then Training Period is included in the computation of contingency table and skill statistics, 
+---- else Training Period is excluded in the computation of contingency table and skill statistics
+
+v1.2.1 - 25 August 2019
+Update: Update the installation and startup scripts to auto-detect the QGIS v3 installation
+Update: Update the installation scripts to skip installation of modules already installed
+Bugfix: Allow null statistics if testing period has no data
+
+v1.3.0 - 
+Bugfix: ignore stations with few years
+Feature: Add multiple linear-regression (basin level)
+Update: AI
+
