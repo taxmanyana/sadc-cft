@@ -171,7 +171,7 @@ def dbcluster(coordinates, func, n_clusters, mindist, samples, njobs):
     if func == 'kmeans':
         db = skluster.KMeans(n_clusters=n_clusters).fit(coordinates)
     if func == 'dbscan':
-        db = DBSCAN(eps=mindist * 1.0 / 6371.0088, min_samples=samples, n_jobs=2)
+        db = DBSCAN(eps=mindist * 1.0 / 6371.0088, min_samples=samples, n_jobs=1)
         db = db.fit(np.radians(coordinates))
     return db
 
@@ -323,7 +323,7 @@ def best_basins(all_basins, basin_matrix, actual, trainingYears, sstyears, inclu
     if includeScore:
         ntest_actualyrs = len(actual)
     r2scores_df = pd.DataFrame(columns=['r2_score', 'Basin combination'])
-    regr = linear_model.LinearRegression(n_jobs=2)
+    regr = linear_model.LinearRegression()
     combinations_all = sum([list(map(list, combinations(all_basins, i))) for i in range(len(all_basins) + 1)], [])
     for cmb in range(len(combinations_all)):
         fcst = []
@@ -371,7 +371,7 @@ def best_basins_model(all_basins, basin_matrix, actual, trainingYears, sstyears,
     comment_df = pd.DataFrame(columns=['Comment'])
     comment_df['Comment'] = comments
     r2scores_df = pd.DataFrame(columns=['r2_score', 'Basin combination'])
-    regr = linear_model.LinearRegression(n_jobs=2)
+    regr = linear_model.LinearRegression()
     fcst = []
     combo_basin_matrix = np.zeros((len(sstyears), len(final_basins))) * np.nan
     # loop for all years where SST is available
@@ -471,7 +471,7 @@ def lregression(prefixParam, predictant, sst, lats, lons, PValue, selectMode, in
                 r_matrix[row][col], p_matrix[row][col] = pearsonr(trainPredictant[notnull], sstvals[notnull])
             except:
                 pass
-    # corr = (p_matrix <= PValue) & (abs(r_matrix) >= 0.4)
+    #corr = (p_matrix <= PValue) & (abs(r_matrix) >= 0.5)
     corr = (p_matrix <= PValue)
     if not corr.any():
         return 0
@@ -479,14 +479,10 @@ def lregression(prefixParam, predictant, sst, lats, lons, PValue, selectMode, in
     # create correlation basins
     corgrp_matrix = np.zeros((nrowssst, ncolssst)) * np.nan
 
-    minx = -80
-    maxx = 180
-    miny = -70
-    maxy = 50
-    # minx = 0
-    # maxx = 360
-    # miny = -90
-    # maxy = 90
+    minx = 0
+    maxx = 366
+    miny = -90
+    maxy = 90
     roi = [False] * len(corr_coords)
     for i in range(len(corr_coords)):
         if corr_coords[i][0] < minx or corr_coords[i][0] > maxx or corr_coords[i][1] < miny or corr_coords[i][1] > maxy:
@@ -604,7 +600,6 @@ def lregression(prefixParam, predictant, sst, lats, lons, PValue, selectMode, in
     # classify forecast
     fcst_precip = round(final_forecasts[yearssst.index(fcstYear)], 1)
     if fcst_precip < 0:  fcst_precip = 0.0
-    # qlimits = [0.25, 0.5, 0.75]
     qlimits = [0.33, 0.5, 0.66]
     dfp = pd.DataFrame(trainPredictant[pnotnull], columns=['avgrain']).quantile(qlimits)
     q1 = float(round(dfp.loc[qlimits[0]], 1))
