@@ -698,3 +698,103 @@ def forecast_zone(predictor, param, predictorMonth, fcstPeriodType, zone, zonest
     zone_precip = np.asarray(precip_concat.mean(axis=1)).reshape(-1, )
     return lregression(prefixParam, zone_precip, sst_arr, lats, lons, PValue, selectMode, includeScore,
                        stepwisePvalue, outDir)
+
+
+def forecast_points(station_id):
+    global config
+    global predictordict
+    global fcstPeriod
+    global predictantdict
+    station = predictantdict['stations'][station_id]
+    input_data = predictantdict['data']
+    station_data_all =  input_data.loc[input_data['ID'] == station]
+    outDir = config.get('outDir') + os.sep + 'Forecast_' + str(config.get('fcstyear')) + \
+              '_' + fcstPeriod + os.sep + 'LR'
+    for predictorName in predictordict:
+        predictorStartYr = predictordict[predictorName]['predictorStartYr']
+        sst_arr = predictordict[predictorName]['sst_arr']
+        trainStartYear = config['trainStartYear']
+        fcstPeriodType = config['fcstPeriodType']
+        prefixParam = {"Predictor": predictorName, "Param": predictordict[predictorName]['param'],
+                       "PredictorMonth": predictordict[predictorName]['predictorMonth'],
+                       "startyr": trainStartYear, "endyr": config['trainEndYear'],
+                       "fcstYear": config['fcstyear'], "fcstPeriod": fcstPeriod, "station": str(station)}
+        years = [yr for yr in range(int(config['trainStartYear']), int(config['trainEndYear']) + 1)]
+        nyearssst, nrowssst, ncolssst = sst_arr.shape
+        yearssst = [yr for yr in range(predictorStartYr, (predictorStartYr + nyearssst))]
+        yearspredictant = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
+        station_data = station_data_all.loc[:,
+                       ('Year', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')]
+        station_data.drop_duplicates('Year', inplace=True)
+        station_data = station_data.apply(pd.to_numeric, errors='coerce')
+        seasonal_precip = pd.DataFrame(columns=['Year',fcstPeriod])
+        seasonal_precip['Year'] = yearspredictant
+        seasonal_precip.set_index('Year', inplace=True)
+        station_data.set_index('Year', inplace=True)
+        for year in yearspredictant:
+            if fcstPeriodType == 0:
+                if composition == "Cumulation":
+                    seasonal_precip.loc[[year], fcstPeriod] = season_cumulation(station_data, year, fcstPeriod)
+                else:
+                    seasonal_precip.loc[[year], fcstPeriod] = season_average(station_data, year, fcstPeriod)
+            else:
+                try:
+                    seasonal_precip.loc[[year], fcstPeriod] = round(float(station_data.loc[[year], fcstPeriod]), 1)
+                except KeyError:
+                    seasonal_precip.loc[[year], fcstPeriod] = np.nan
+
+        station_precip = np.asarray(seasonal_precip, dtype=float).reshape(-1, )
+        # print(prefixParam, station_precip, sst_arr, lats, lons, PValue, selectMode, includeScore,
+        #                    stepwisePvalue, outDir)
+    return lregression(prefixParam, station_precip, sst_arr, lats, lons, PValue, selectMode, includeScore,
+                       stepwisePvalue, outDir)
+
+
+def forecast_points(config, predictordict, predictantdict, fcstPeriod, station):
+    output = {}
+    output[station] = {}
+    input_data = predictantdict['data']
+    station_data_all =  input_data.loc[input_data['ID'] == station]
+    outDir = config.get('outDir') + os.sep + 'Forecast_' + str(config.get('fcstyear')) + \
+              '_' + fcstPeriod + os.sep + 'LR'
+    for predictorName in predictordict:
+        predictorStartYr = predictordict[predictorName]['predictorStartYr']
+        sst_arr = predictordict[predictorName]['data']
+        trainStartYear = config['trainStartYear']
+        fcstPeriodType = config['fcstPeriodType']
+        prefixParam = {"Predictor": predictorName, "Param": predictordict[predictorName]['param'],
+                       "PredictorMonth": predictordict[predictorName]['predictorMonth'],
+                       "startyr": trainStartYear, "endyr": config['trainEndYear'],
+                       "fcstYear": config['fcstyear'], "fcstPeriod": fcstPeriod, "station": str(station)}
+        years = [yr for yr in range(int(config['trainStartYear']), int(config['trainEndYear']) + 1)]
+        nyearssst, nrowssst, ncolssst = sst_arr.shape
+        yearssst = [yr for yr in range(predictorStartYr, (predictorStartYr + nyearssst))]
+        yearspredictant = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
+        station_data = station_data_all.loc[:,
+                       ('Year', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')]
+        station_data.drop_duplicates('Year', inplace=True)
+        station_data = station_data.apply(pd.to_numeric, errors='coerce')
+        seasonal_precip = pd.DataFrame(columns=['Year',fcstPeriod])
+        seasonal_precip['Year'] = yearspredictant
+        seasonal_precip.set_index('Year', inplace=True)
+        station_data.set_index('Year', inplace=True)
+        for year in yearspredictant:
+            if fcstPeriodType == 0:
+                if config['composition'] == "Cumulation":
+                    seasonal_precip.loc[[year], fcstPeriod] = season_cumulation(station_data, year, fcstPeriod)
+                else:
+                    seasonal_precip.loc[[year], fcstPeriod] = season_average(station_data, year, fcstPeriod)
+            else:
+                try:
+                    seasonal_precip.loc[[year], fcstPeriod] = round(float(station_data.loc[[year], fcstPeriod]), 1)
+                except KeyError:
+                    seasonal_precip.loc[[year], fcstPeriod] = np.nan
+
+        station_precip = np.asarray(seasonal_precip, dtype=float).reshape(-1, )
+        # print(prefixParam, station_precip, sst_arr, lats, lons, PValue, selectMode, includeScore,
+        #                    stepwisePvalue, outDir)
+        output[station][predictorName] = lregression(prefixParam, station_precip, sst_arr, predictordict[predictorName]['lats'],
+                       predictordict[predictorName]['lons'], config['PValue'], config['selectMode'],
+                       config['includeScore'], config['stepwisePvalue'], outDir)
+
+    return output
