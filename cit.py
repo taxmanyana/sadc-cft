@@ -258,6 +258,8 @@ if __name__ == "__main__":
         config['basinbounds']['maxlat'] = window.maxlatLineEdit.text()
         config['basinbounds']['minlon'] = window.minlonLineEdit.text()
         config['basinbounds']['maxlon'] = window.maxlonLineEdit.text()
+        config['trainStartYear'] = int(window.startyearLineEdit.text())
+        config['trainEndYear'] = int(window.endyearLineEdit.text())
 
         # check if output directory exists
         if not os.path.exists(config.get('outDir')):
@@ -282,19 +284,19 @@ if __name__ == "__main__":
                 stations = list(input_data['ID'].unique())
                 predictantdict['stations'] = stations
                 nstations = len(stations)
-                lat, lon = [], []
+                predictantdict['lats'], predictantdict['lons'] = [], []
                 for n in range(nstations):
                     station_data_all = input_data.loc[input_data['ID'] == stations[n]]
-                    lat.append(station_data_all['Lat'].unique()[0])
-                    lon.append(station_data_all['Lon'].unique()[0])
-                fcst_precip = np.zeros(nstations)
-                fcst_class = np.zeros(nstations)
-                qt1 = np.zeros(nstations)
-                qt2 = np.zeros(nstations)
-                qt3 = np.zeros(nstations)
-                prmean = np.zeros(nstations)
-                skills = np.zeros(nstations)
-                probabilities = [None] * nstations
+                    predictantdict['lats'].append(station_data_all['Lat'].unique()[0])
+                    predictantdict['lons'].append(station_data_all['Lon'].unique()[0])
+                # fcst_precip = np.zeros(nstations)
+                # fcst_class = np.zeros(nstations)
+                # qt1 = np.zeros(nstations)
+                # qt2 = np.zeros(nstations)
+                # qt3 = np.zeros(nstations)
+                # prmean = np.zeros(nstations)
+                # skills = np.zeros(nstations)
+                # probabilities = [None] * nstations
             else:
                 input_data = None
 
@@ -318,6 +320,7 @@ if __name__ == "__main__":
                 param = get_parameter(dataset.variables.keys())
                 timearr = np.array(dataset.variables['T'][:], dtype=int)
                 sst = dataset.variables[param][:]
+                sst[sst.mask] = np.nan
                 predictordict[predictorName]['lats'] = dataset.variables['Y'][:]
                 predictordict[predictorName]['lons'] = dataset.variables['X'][:]
                 rows = len(predictordict[predictorName]['lats'])
@@ -359,7 +362,7 @@ if __name__ == "__main__":
                         window.progresslabel.setText(status)
                         continue
 
-                if int(config.get('fcstyear')) <= config.get('trainEndYear'):
+                if int(config.get('fcstyear')) <= int(config.get('trainEndYear')):
                     status = "Cannot forecast " + str(config.get('fcstyear')) + " as it is not beyond training period"
                     window.progresslabel.setText(status)
                     continue
@@ -399,9 +402,8 @@ if __name__ == "__main__":
                 sst_arr = None
                 sst = None
 
-        # print(forecast_points(config, predictordict, predictantdict, fcstPeriod, stations[0]))
-        func = partial(forecast_points, config, predictordict, predictantdict, fcstPeriod)
-
+        # print(forecast_station(config, predictordict, predictantdict, fcstPeriod, stations[0]))
+        func = partial(forecast_station, config, predictordict, predictantdict, fcstPeriod)
         p = Pool(6)
         rs = p.imap_unordered(func, stations)
         p.close()
@@ -413,7 +415,9 @@ if __name__ == "__main__":
             # print("processing ", completed, " of ", len(stations))
             time.sleep(0.2)
         r = list(rs)
-        print(r)
+        for s in r:
+            print(type(s))
+            print(s)
 
         #         for algorithm in config.get('algorithms'):
         #             cproc = cproc + 1
