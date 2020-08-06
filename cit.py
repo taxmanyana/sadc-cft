@@ -305,7 +305,7 @@ if __name__ == "__main__":
         predictorMonth = str(window.predictMonthComboBox.currentText())
         fcstPeriod = str(window.periodComboBox.currentText())
 
-        cproc = 0
+        # cproc = 0
 
         for predictor in config.get('predictorList'):
             if os.path.isfile(predictor):
@@ -402,22 +402,59 @@ if __name__ == "__main__":
                 sst_arr = None
                 sst = None
 
+        # create output directory
+        outdir = config.get('outDir') + os.sep + 'Forecast_' + str(config.get('fcstyear')) + \
+                 '_' + fcstPeriod + os.sep
+        os.makedirs(outdir, exist_ok=True)
+
         # print(forecast_station(config, predictordict, predictantdict, fcstPeriod, stations[0]))
-        func = partial(forecast_station, config, predictordict, predictantdict, fcstPeriod)
+        func = partial(forecast_station, config, predictordict, predictantdict, fcstPeriod, outdir)
         p = Pool(6)
         rs = p.imap_unordered(func, stations)
         p.close()
         while (True):
             completed = rs._index
             if (completed >= len(stations)): break
-            status = "completed processing of " + str(completed) + " of " + str(len(stations)) + " stations"
+            status = "completed processing " + str(completed) + " of " + str(len(stations)) + " stations"
             window.progresslabel.setText(status)
             # print("processing ", completed, " of ", len(stations))
             time.sleep(0.2)
-        r = list(rs)
-        for s in r:
-            print(type(s))
-            print(s)
+        forecastsdf = pd.concat(list(rs), ignore_index=True)
+
+        # Write forecasts to output directory
+        window.progresslabel.setText('Writing Forecast...')
+        print('Writing Forecast...')
+        forecastdir = outdir + os.sep + "Forecast"
+        os.makedirs(forecastdir, exist_ok=True)
+        fcstprefix = str(config.get('fcstyear')) + fcstPeriod + '_' + predictordict[predictorName]['predictorMonth']
+        # write forecast by station or zone
+        if config.get('zonevector', {}).get('file') is None:
+            write_forecast(fcstprefix, forecastsdf, forecastdir)
+            window.progresslabel.setText('Done.')
+            print('Done.')
+        else:
+            if not os.path.isfile(config.get('zonevector', {}).get('file')):
+                window.progresslabel.setText('Error: Zone vector does not exist, will not write forecast')
+                print('Error: Zone vector does not exist, will not write forecast')
+            else:
+                with open(config.get('zonevector', {}).get('file')) as f:
+                        zonejson = geojson.load(f)
+                zoneattrID = config.get('zonevector',{}).get('ID')
+                zoneattr = config.get('zonevector', {}).get('attr')[zoneattrID]
+                # zones = zonelist(zonejson, zoneattr)
+                forecastsdf["Zone"] = np.nan
+                # --------------
+                for n in range(nstations):
+                    station = predictantdict['stations'][n]
+                    szone = whichzone(zonejson, predictantdict['lats'][n], predictantdict['lons'][n], zoneattr)
+                    forecastsdf.loc[forecastsdf.ID == station, 'Zone'] = szone
+                fcstcsvout = forecastdir + os.sep + fcstprefix + '_zone_station_forecast.csv'
+                forecastsdf.to_csv(fcstcsvout, header=True, index=True)
+                # generate zone forecast
+                # write_zone_forecast(prefix, zonejson, zoneattr, fcstzone, zones, outpath)
+                # print(forecastsdf.head(100))
+                window.progresslabel.setText('Done.')
+                print('Done.')
 
         #         for algorithm in config.get('algorithms'):
         #             cproc = cproc + 1
@@ -478,36 +515,6 @@ if __name__ == "__main__":
         #                             print(algorithm + ' complete')
         #
         #                     # if no zone file has been defined...
-        #                     else:
-        #                         cstation = 0
-        #                         for n in range(nstations):
-        #                             cstation = cstation + 1
-        #                             window.progresslabel.setText(cstatus + 'processing station ' + str(cstation) +
-        #                                            ' of ' + str(nstations) + ' (' + str(stations[n]) + ')')
-        #                             print('\nprocessing station ' + str(cstation) + ' of ' + str(nstations) +
-        #                                   ' (' + str(stations[n]) + ')')
-        #                             station_data_all = input_data.loc[input_data['ID'] == stations[n]]
-        #                             lat[n] = station_data_all['Lat'].unique()[0]
-        #                             lon[n] = station_data_all['Lon'].unique()[0]
-        #                             qt1[n], qt2[n], qt3[n], prmean[n], fcst_precip[n], fcst_class[n], skills[n], probabilities[n] = \
-        #                                 forecast_point(predictor=predictor,
-        #                                            param=param, predictorMonth=predictorMonth, fcstPeriodType=config.get('fcstPeriodType'),
-        #                                            station=stations[n], station_data_all=station_data_all,
-        #                                            sst_arr=sst_arr, lats=lats, lons=lons, trainStartYear=config['trainStartYear'],
-        #                                            trainEndYear=config['trainEndYear'], predictorStartYr=predictorStartYr,
-        #                                            fcstYear=config['fcstyear'], fcstPeriod=fcstPeriod, PValue=config['PValue'],
-        #                                            composition=config.get('composition'), selectMode=config.get('selectMode'),
-        #                                            includeScore=config.get('includeScore'), stepwisePvalue=config.get('stepwisePvalue'),
-        #                                            outDir=outpath)
-        #
-        #                         window.progresslabel.setText('Finalizing: writing station forecast')
-        #                         print('Finalizing: writing station forecast')
-        #                         prefix = predictorName + '_' + param + '_' + predictorMonth
-        #                         write_forecast(prefix, lon, lat, stations, qt1, qt2, qt3, prmean, fcst_precip, fcst_class,
-        #                                        skills, probabilities, outpath)
-        #                         window.progresslabel.setText(cstatus + algorithm + ' complete')
-        #                         print(algorithm+' complete')
-        #             if algorithm == 'ANN':
         #
 
 
