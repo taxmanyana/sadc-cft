@@ -128,6 +128,8 @@ def stepwise_selection(X, y,
 
         if not changed:
             break
+    if len(included) == 0:
+        included = list(initial_list)
     return included, comment
 
 
@@ -211,39 +213,66 @@ def write_forecast(prefix, forecast_df, outdir):
     fcstcsvout = outdir + os.sep + prefix + '_forecast.csv'
     forecast_df.to_csv(fcstcsvout, header=True, index=True)
 
-def write_zone_forecast(prefix, forecastjson, zoneID, fcstzone, zones, outpath):
-    fcstzone_df = pd.DataFrame(columns=['ZoneID','t1','t2','t3','mean','fcst','class','hitscore','PB_PN_PA'])
-    fcstzone_df['ZoneID'] = zones
-    fcstzone_df.set_index('ZoneID', inplace=True)
-    for zone in fcstzone.keys():
-        fcstzone_df.loc[[zone], 't1'] = fcstzone[zone][0]
-        fcstzone_df.loc[[zone], 't2'] = fcstzone[zone][1]
-        fcstzone_df.loc[[zone], 't3'] = fcstzone[zone][2]
-        fcstzone_df.loc[[zone], 'mean'] = fcstzone[zone][3]
-        fcstzone_df.loc[[zone], 'fcst'] = fcstzone[zone][4]
-        fcstzone_df.loc[[zone], 'class'] = fcstzone[zone][5]
-        fcstzone_df.loc[[zone], 'hitscore'] = fcstzone[zone][6]
-        fcstzone_df.loc[[zone], 'PB_PN_PA'] = str(fcstzone[zone][7]).replace('nan','')
-    fcstzone_df = fcstzone_df.fillna('')
-    fcstoutdir = outpath + os.sep + "forecast"
-    os.makedirs(fcstoutdir, exist_ok=True)
-    fcstjsonout = fcstoutdir + os.sep + prefix + '_zone-forecast.geojson'
-    fcstcsvout = fcstoutdir + os.sep + prefix + '_zone-forecast.csv'
+def write_zone_forecast(zonefcstprefix, fcstzone_df, forecastjson, ZoneID):
+    ids = list(fcstzone_df.reset_index()['Zone'])
+    fcstjsonout = zonefcstprefix + '_zone-forecast.geojson'
+    fcstcsvout = zonefcstprefix + '_zone-forecast.csv'
     for feature in forecastjson['features']:
-        ID = feature['properties'][zoneID]
-        if not fcstzone.get(ID, None) == None:
-            feature['properties']['t1'] = list(fcstzone_df.loc[[ID],'t1'])[0]
-            feature['properties']['t2'] = list(fcstzone_df.loc[[ID],'t2'])[0]
-            feature['properties']['t3'] = list(fcstzone_df.loc[[ID],'t3'])[0]
-            feature['properties']['mean'] = list(fcstzone_df.loc[[ID],'mean'])[0]
-            feature['properties']['fcst'] = list(fcstzone_df.loc[[ID],'fcst'])[0]
+        ID = feature['properties'][ZoneID]
+        if ID in ids:
+            feature['properties']['n4'] = list(fcstzone_df.loc[[ID],'n4'])[0]
+            feature['properties']['n3'] = list(fcstzone_df.loc[[ID],'n3'])[0]
+            feature['properties']['n2'] = list(fcstzone_df.loc[[ID],'n2'])[0]
+            feature['properties']['n1'] = list(fcstzone_df.loc[[ID],'n1'])[0]
+            feature['properties']['wavg'] = list(fcstzone_df.loc[[ID],'wavg'])[0]
             feature['properties']['class'] = list(fcstzone_df.loc[[ID],'class'])[0]
-            feature['properties']['hitscore'] = list(fcstzone_df.loc[[ID],'hitscore'])[0]
-            feature['properties']['PB_PN_PA'] = list(fcstzone_df.loc[[ID],'PB_PN_PA'])[0]
     fcstzone_df.to_csv(fcstcsvout, header=True, index=True)
     with open(fcstjsonout, 'w') as fp:
         geojson.dump(forecastjson, fp)
 
+def weighted_average(group):
+   HS = group['HS']
+   fclass = group['class']
+   n4 = list(fclass).count(4)
+   n3 = list(fclass).count(3)
+   n2 = list(fclass).count(2)
+   n1 = list(fclass).count(1)
+   wavg = np.average(fclass,weights=HS)
+   return wavg, n4, n3, n2, n1
+
+# def write_zone_forecast(prefix, forecastjson, zoneID, fcstzone, zones, outpath):
+#     fcstzone_df = pd.DataFrame(columns=['ZoneID','t1','t2','t3','mean','fcst','class','hitscore','PB_PN_PA'])
+#     fcstzone_df['ZoneID'] = zones
+#     fcstzone_df.set_index('ZoneID', inplace=True)
+#     for zone in fcstzone.keys():
+#         fcstzone_df.loc[[zone], 't1'] = fcstzone[zone][0]
+#         fcstzone_df.loc[[zone], 't2'] = fcstzone[zone][1]
+#         fcstzone_df.loc[[zone], 't3'] = fcstzone[zone][2]
+#         fcstzone_df.loc[[zone], 'mean'] = fcstzone[zone][3]
+#         fcstzone_df.loc[[zone], 'fcst'] = fcstzone[zone][4]
+#         fcstzone_df.loc[[zone], 'class'] = fcstzone[zone][5]
+#         fcstzone_df.loc[[zone], 'hitscore'] = fcstzone[zone][6]
+#         fcstzone_df.loc[[zone], 'PB_PN_PA'] = str(fcstzone[zone][7]).replace('nan','')
+#     fcstzone_df = fcstzone_df.fillna('')
+#     fcstoutdir = outpath + os.sep + "forecast"
+#     os.makedirs(fcstoutdir, exist_ok=True)
+#     fcstjsonout = fcstoutdir + os.sep + prefix + '_zone-forecast.geojson'
+#     fcstcsvout = fcstoutdir + os.sep + prefix + '_zone-forecast.csv'
+#     for feature in forecastjson['features']:
+#         ID = feature['properties'][zoneID]
+#         if not fcstzone.get(ID, None) == None:
+#             feature['properties']['t1'] = list(fcstzone_df.loc[[ID],'t1'])[0]
+#             feature['properties']['t2'] = list(fcstzone_df.loc[[ID],'t2'])[0]
+#             feature['properties']['t3'] = list(fcstzone_df.loc[[ID],'t3'])[0]
+#             feature['properties']['mean'] = list(fcstzone_df.loc[[ID],'mean'])[0]
+#             feature['properties']['fcst'] = list(fcstzone_df.loc[[ID],'fcst'])[0]
+#             feature['properties']['class'] = list(fcstzone_df.loc[[ID],'class'])[0]
+#             feature['properties']['hitscore'] = list(fcstzone_df.loc[[ID],'hitscore'])[0]
+#             feature['properties']['PB_PN_PA'] = list(fcstzone_df.loc[[ID],'PB_PN_PA'])[0]
+#     fcstzone_df.to_csv(fcstcsvout, header=True, index=True)
+#     with open(fcstjsonout, 'w') as fp:
+#         geojson.dump(forecastjson, fp)
+#
 
 def model_skill(fcst_df, lim1, lim2):
     HS = 0
@@ -841,6 +870,8 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
     trainEndYear = int(config['trainEndYear'])
     fcstPeriodType = int(config['fcstPeriodType'])
     fcstYear = int(config['fcstyear'])
+    trainingYears = [yr for yr in range(trainStartYear, trainEndYear + 1)]
+    nyears = len(trainingYears)
     forecastdf = pd.DataFrame(columns=['Predictor', 'Algorithm', 'ID', 'Lat', 'Lon', 't1', 't2', 't3',
                                        'mean', 'fcst', 'class', 'r2score', 'HS', 'Prob'])
 
@@ -878,13 +909,16 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                     seasonal_precip.loc[[year], fcstPeriod] = np.nan
 
         predictant = np.asarray(seasonal_precip, dtype=float).reshape(-1, )
-
-        ########## compute basins #############
+        training_actual = predictant[:len(trainingYears)]
+        test_actual = predictant[len(trainingYears):]
+        test_notnull = np.isfinite(test_actual)
         name = re.sub('[^a-zA-Z0-9]', '', prefixParam["station"])
         prefix = prefixParam["Predictor"] + '_' + prefixParam["Param"] + '_' + prefixParam["PredictorMonth"] + '_' + \
                  str(prefixParam["startyr"]) + '-' + str(prefixParam["endyr"]) + '_' + name
-        trainingYears = [yr for yr in range(trainStartYear, trainEndYear + 1)]
-        nyears = len(trainingYears)
+        if (len(training_actual[np.isfinite(training_actual)]) < 6) or (len(test_actual[np.isfinite(test_actual)]) < 2):
+            continue
+
+        # compute basins
         SSTclusterSize = 1000.
         trainPredictant = predictant[:nyears]
         trainSST = sst_arr[:nyears]
@@ -938,7 +972,6 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
             if count < minpixelperbasin: coords_clustered[coords_clustered == zone] = -1
 
         basins = list(set(coords_clustered[coords_clustered != -1]))
-        if len(basins) == 0: return None, None, None, None, None, None, None, None
         SSTzones = len(basins)
         if corr[corr == True].shape == coords_clustered.shape:
             index = 0
@@ -966,7 +999,9 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         basin_arr = list(corr_df.columns)
         indx = basin_arr.index(fcstPeriod)
         basin_arr.pop(indx)
-        basins = [x.replace('Basin','') for x in basin_arr]
+        # basins = [x.replace('Basin','') for x in basin_arr]
+        if len(basin_arr) == 0:
+            continue
         basin_matrix = np.array(corr_df[basin_arr])
         corroutdir = outdir + os.sep + "Correlation"
         writeout(prefix, r_matrix, p_matrix, corgrp_matrix, corr_df, predictordict[predictorName]['lats'],
@@ -981,6 +1016,9 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                                                     initial_list=basin_arr, threshold_out=config['stepwisePvalue'])
 
         selected_basins = final_basins[:]
+        if len(final_basins) == 0:
+            selected_basins = basin_arr[:]
+            final_basins = basin_arr[:]
         selected_basins.insert(0, 'y_intercept')
         comments.append("Final basins: " + str(final_basins))
         csv = corroutdir + os.sep + prefix + '_forward-selection.csv'
@@ -996,13 +1034,10 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                 combo_basin_matrix[yr][group] = basin_matrix[yr][basin_arr.index(final_basins[group])]
 
         nbasins = len(final_basins)
-        training_actual = predictant[:len(trainingYears)]
-        test_actual = predictant[len(trainingYears):]
         training_Xmatrix = combo_basin_matrix[:len(trainingYears)]
         testing_Xmatrix = combo_basin_matrix[len(trainingYears):]
         testing_years = yearssst[len(trainingYears):]
         notnull = np.isfinite(training_actual)
-        test_notnull = np.isfinite(test_actual)
         # scale the predictor
         scaler = StandardScaler()
         scaler.fit(training_Xmatrix)
@@ -1014,50 +1049,6 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         os.makedirs(regoutdir, exist_ok=True)
 
         for algorithm in config.get('algorithms'):
-            if algorithm == 'LR':
-                print('linear regression...')
-                # start_time = time.time()
-                regr = linear_model.LinearRegression()
-                regr.fit(X_train[notnull], np.asarray(training_actual)[notnull])
-                intercept = regr.intercept_
-                coefficients = regr.coef_
-                lr_fcstdf = pd.DataFrame(columns=['Year', fcstPeriod, 'LRfcst'])
-                lr_fcstdf['Year'] = testing_years
-                lr_fcstdf[fcstPeriod] = test_actual
-                lr_fcstdf.set_index('Year', inplace=True)
-                for yr in range(len(testing_years)):
-                    year = testing_years[yr]
-                    lr_fcstdf.loc[year, 'LRfcst'] = regr.predict(X_test[yr].reshape(1, -1))[0]
-                warnings.filterwarnings('error')
-                m, n = pearsonr(np.array(lr_fcstdf['LRfcst'])[test_notnull], list(np.ravel(test_actual)[test_notnull]))
-                r2score = m ** 2
-                # print('r-square', r2score, ', p', n)
-                # print('processing time(sec)', time.time() - start_time)
-                lrdirout = regoutdir + os.sep + 'LR'
-                os.makedirs(lrdirout, exist_ok=True)
-                csv = lrdirout + os.sep + prefix + '_' + fcstPeriod + '_forecast_matrix.csv'
-                lr_fcstdf.reset_index()
-                lr_fcstdf.to_csv(csv, index=True)
-                #
-                regrFormula = {"intercept": intercept, "coefficients": coefficients}
-                coeff_arr = list(regrFormula["coefficients"])
-                coeff_arr.insert(0, regrFormula["intercept"])
-                reg_df = pd.DataFrame(columns=selected_basins)
-                reg_df.loc[0] = coeff_arr
-                csv = lrdirout+ os.sep + prefix + '_correlation-formula.csv'
-                reg_df.to_csv(csv, index=False)
-                #
-                q1, q2, q3, pmean, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
-                    run_model_skill(lr_fcstdf, fcstPeriod, 'LRfcst', r2score, training_actual)
-                csv = lrdirout + os.sep + prefix + '_score-contingency-table.csv'
-                cgtable_df.to_csv(csv, index=False)
-                csv = lrdirout + os.sep + prefix + '_score-statistics.csv'
-                skill_df.to_csv(csv, index=False)
-                a_series = pd.Series([predictorName, algorithm, station, lat, lon, q1, q2, q3, pmean, famnt,
-                                      fclass, r2score, HS, Prob], index=forecastdf.columns)
-                forecastdf = forecastdf.append(a_series, ignore_index=True)
-                lr_fcstdf.rename(columns={'LRfcst': predictorName + '_LR'}, inplace=True)
-                stationYF_dfs.append(lr_fcstdf)
 
             if algorithm == 'MLP':
                 print('mlp regression...')
@@ -1083,7 +1074,7 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                         try:
                             m, n = pearsonr(np.array(forecasts)[test_notnull], list(np.ravel(test_actual)[test_notnull]))
                         except:
-                            pass
+                            continue
                         v = np.std(forecasts)
                         ratings[str(x + 1) + '_' + str(y + 1)] = (m ** 2, v)
 
@@ -1141,13 +1132,62 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                 mlp_fcstdf.rename(columns={'MLPfcst': predictorName +'_MLP'}, inplace=True)
                 stationYF_dfs.append(mlp_fcstdf)
 
+            if algorithm == 'LR':
+                print('linear regression...')
+                # start_time = time.time()
+                regr = linear_model.LinearRegression()
+                regr.fit(X_train[notnull], np.asarray(training_actual)[notnull])
+                intercept = regr.intercept_
+                coefficients = regr.coef_
+                lr_fcstdf = pd.DataFrame(columns=['Year', fcstPeriod, 'LRfcst'])
+                lr_fcstdf['Year'] = testing_years
+                lr_fcstdf[fcstPeriod] = test_actual
+                lr_fcstdf.set_index('Year', inplace=True)
+                for yr in range(len(testing_years)):
+                    year = testing_years[yr]
+                    lr_fcstdf.loc[year, 'LRfcst'] = regr.predict(X_test[yr].reshape(1, -1))[0]
+                warnings.filterwarnings('error')
+                try:
+                    m, n = pearsonr(np.array(lr_fcstdf['LRfcst'])[test_notnull], list(np.ravel(test_actual)[test_notnull]))
+                except:
+                    continue
+                r2score = m ** 2
+                # print('r-square', r2score, ', p', n)
+                # print('processing time(sec)', time.time() - start_time)
+                lrdirout = regoutdir + os.sep + 'LR'
+                os.makedirs(lrdirout, exist_ok=True)
+                csv = lrdirout + os.sep + prefix + '_' + fcstPeriod + '_forecast_matrix.csv'
+                lr_fcstdf.reset_index()
+                lr_fcstdf.to_csv(csv, index=True)
+                #
+                regrFormula = {"intercept": intercept, "coefficients": coefficients}
+                coeff_arr = list(regrFormula["coefficients"])
+                coeff_arr.insert(0, regrFormula["intercept"])
+                reg_df = pd.DataFrame(columns=selected_basins)
+                reg_df.loc[0] = coeff_arr
+                csv = lrdirout+ os.sep + prefix + '_correlation-formula.csv'
+                reg_df.to_csv(csv, index=False)
+                #
+                q1, q2, q3, pmean, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
+                    run_model_skill(lr_fcstdf, fcstPeriod, 'LRfcst', r2score, training_actual)
+                csv = lrdirout + os.sep + prefix + '_score-contingency-table.csv'
+                cgtable_df.to_csv(csv, index=False)
+                csv = lrdirout + os.sep + prefix + '_score-statistics.csv'
+                skill_df.to_csv(csv, index=False)
+                a_series = pd.Series([predictorName, algorithm, station, lat, lon, q1, q2, q3, pmean, famnt,
+                                      fclass, r2score, HS, Prob], index=forecastdf.columns)
+                forecastdf = forecastdf.append(a_series, ignore_index=True)
+                lr_fcstdf.rename(columns={'LRfcst': predictorName + '_LR'}, inplace=True)
+                stationYF_dfs.append(lr_fcstdf)
+
     # plot the forecast graphs
-    stationYF_df = pd.concat(stationYF_dfs, axis=1, join='outer')
-    stationYF_df = stationYF_df.loc[:, ~stationYF_df.columns.duplicated()]
-    stationYF_df = stationYF_df.reset_index()
-    fcstoutdir = outdir + os.sep + "Forecast"
-    os.makedirs(fcstoutdir, exist_ok=True)
-    graphpng = fcstoutdir + os.sep + 'forecast_graphs_' + station + '.png'
-    plot_Station_forecast(stationYF_df, fcstPeriod, graphpng, station, q1, q2, q3)
+    if len(stationYF_dfs) > 0:
+        stationYF_df = pd.concat(stationYF_dfs, axis=1, join='outer')
+        stationYF_df = stationYF_df.loc[:, ~stationYF_df.columns.duplicated()]
+        stationYF_df = stationYF_df.reset_index()
+        fcstoutdir = outdir + os.sep + "Forecast"
+        os.makedirs(fcstoutdir, exist_ok=True)
+        graphpng = fcstoutdir + os.sep + 'forecast_graphs_' + station + '.png'
+        plot_Station_forecast(stationYF_df, fcstPeriod, graphpng, station, q1, q2, q3)
     # return station forecast
     return forecastdf

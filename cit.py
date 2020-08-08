@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 import geojson, json
 import threading
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 from functools import partial
 from functions import *
 
@@ -31,6 +31,7 @@ predictantdict = {}
 predictantdict['stations'] = []
 predictantdict['data'] = None
 fcstPeriod = None
+cpus = int(round(0.9 * cpu_count() - 0.5, 0))
 
 if os.path.isfile(settingsfile):
     with open(settingsfile, "r") as read_file:
@@ -228,6 +229,7 @@ if __name__ == "__main__":
         global predictordict
         global predictantdict
         global fcstPeriod
+        global cpus
         window.progresslabel.setText('preparing inputs')
         config['algorithms'] = []
         if window.LRcheckBox.isChecked():
@@ -289,14 +291,7 @@ if __name__ == "__main__":
                     station_data_all = input_data.loc[input_data['ID'] == stations[n]]
                     predictantdict['lats'].append(station_data_all['Lat'].unique()[0])
                     predictantdict['lons'].append(station_data_all['Lon'].unique()[0])
-                # fcst_precip = np.zeros(nstations)
-                # fcst_class = np.zeros(nstations)
-                # qt1 = np.zeros(nstations)
-                # qt2 = np.zeros(nstations)
-                # qt3 = np.zeros(nstations)
-                # prmean = np.zeros(nstations)
-                # skills = np.zeros(nstations)
-                # probabilities = [None] * nstations
+
             else:
                 input_data = None
 
@@ -311,7 +306,7 @@ if __name__ == "__main__":
             if os.path.isfile(predictor):
                 predictorName = os.path.splitext(os.path.basename(predictor))[0]
                 predictordict[predictorName] = {}
-                window.progresslabel.setText('processing ' + predictorName)
+                window.progresslabel.setText('checking ' + predictorName)
                 print('checking ' + predictorName)
                 dataset = Dataset(predictor)
                 sstmon = month_dict.get(predictorMonth.lower(), None)
@@ -409,7 +404,7 @@ if __name__ == "__main__":
 
         # print(forecast_station(config, predictordict, predictantdict, fcstPeriod, stations[0]))
         func = partial(forecast_station, config, predictordict, predictantdict, fcstPeriod, outdir)
-        p = Pool(6)
+        p = Pool(cpus)
         rs = p.imap_unordered(func, stations)
         p.close()
         while (True):
@@ -430,8 +425,20 @@ if __name__ == "__main__":
         # write forecast by station or zone
         if config.get('zonevector', {}).get('file') is None:
             write_forecast(fcstprefix, forecastsdf, forecastdir)
-            window.progresslabel.setText('Done.')
-            print('Done.')
+            # highskilldf = forecastsdf[forecastsdf.HS.ge(50)][['ID', 'Lat', 'Lon', 'HS', 'class']]
+            # r, _ = highskilldf.shape
+            # if r > 0:
+            #     stationclass = highskilldf.groupby('ID', 'Lat', 'Lon').apply(func=weighted_average).to_frame(name='WA')
+            #     stationclass[['wavg', 'n4', 'n3', 'n2', 'n1']] = pd.DataFrame(stationclass.WA.tolist(), index=stationclass.index)
+            #     stationclass = stationclass.drop(['WA'], axis=1)
+            #     stationclass['class'] = round(stationclass['wavg']).astype(int)
+            #     print(stationclass.head(100))
+            #     # write_station_forecast(zonefcstprefix, stationclass, zonejson, ZoneID)
+            #     window.progresslabel.setText('Done.')
+            #     print('Done.')
+            # else:
+            #     window.progresslabel.setText('Skill not enough for station forecast')
+            #     print('Skill not enough for station forecast')
         else:
             if not os.path.isfile(config.get('zonevector', {}).get('file')):
                 window.progresslabel.setText('Error: Zone vector does not exist, will not write forecast')
@@ -451,10 +458,22 @@ if __name__ == "__main__":
                 fcstcsvout = forecastdir + os.sep + fcstprefix + '_zone_station_forecast.csv'
                 forecastsdf.to_csv(fcstcsvout, header=True, index=True)
                 # generate zone forecast
-                # write_zone_forecast(prefix, zonejson, zoneattr, fcstzone, zones, outpath)
-                # print(forecastsdf.head(100))
-                window.progresslabel.setText('Done.')
-                print('Done.')
+                zonefcstprefix = forecastdir + os.sep + str(config.get('fcstyear')) + fcstPeriod + '_' + \
+                                 predictordict[predictorName]['predictorMonth']
+                highskilldf = forecastsdf[forecastsdf.HS.ge(50)][['HS', 'class', 'Zone']]
+                r, _ = highskilldf.shape
+                if r > 0:
+                    zoneclass = highskilldf.groupby('Zone').apply(func=weighted_average).to_frame(name='WA')
+                    zoneclass[['wavg', 'n4', 'n3', 'n2', 'n1']] = pd.DataFrame(zoneclass.WA.tolist(), index=zoneclass.index)
+                    zoneclass = zoneclass.drop(['WA'], axis=1)
+                    zoneclass['class'] = round(zoneclass['wavg']).astype(int)
+                    ZoneID = config['zonevector']['attr'][config['zonevector']['ID']]
+                    write_zone_forecast(zonefcstprefix, zoneclass, zonejson, ZoneID)
+                    window.progresslabel.setText('Done.')
+                    print('Done.')
+                else:
+                    window.progresslabel.setText('Skill not enough for zone forecast')
+                    print('Skill not enough for zone forecast')
 
         #         for algorithm in config.get('algorithms'):
         #             cproc = cproc + 1
