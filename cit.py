@@ -246,7 +246,7 @@ if __name__ == "__main__":
 
         if len(config.get('algorithms')) == 0:
             window.progresslabel.setText("No algorithm set!")
-            return
+            return None
 
         if window.cumRadio.isChecked():
             config['composition'] = "Cumulation"
@@ -274,7 +274,7 @@ if __name__ == "__main__":
         # check if output directory exists
         if not os.path.exists(config.get('outDir')):
             window.progresslabel.setText("Output Directory not set!")
-            return
+            return None
 
         # Write configuration to settings file
         import json
@@ -338,7 +338,7 @@ if __name__ == "__main__":
                 if len(mon_arr) == 0:
                     status = "Predictor ("+param+") does not contain any data for " + predictorMonth
                     window.progresslabel.setText(status)
-                    continue
+                    return None
 
                 for mon in mon_arr:
                     year_arr.append(int((ref_date + relativedelta(months=+int(mon))).strftime("%Y")))
@@ -354,23 +354,23 @@ if __name__ == "__main__":
                         status = "Predictor ("+param+") for " + predictorMonth + " goes up to " + str(year_arr[-1]) + \
                             ", cannot be used to forecast " + str(config.get('fcstyear')) + ' ' + fcstPeriod
                         window.progresslabel.setText(status)
-                        continue
+                        return None
                     if config.get('fcstPeriodIndex') >= config.get('predictorMonthIndex'):
                         status = "Predictor ("+param+") for " + predictorMonth + " goes up to " + str(year_arr[-1]) + \
                             ", cannot be used to forecast " + str(config.get('fcstyear')) + ' ' + fcstPeriod
                         window.progresslabel.setText(status)
-                        continue
+                        return None
 
                 if int(config.get('fcstyear')) <= int(config.get('trainEndYear')):
                     status = "Cannot forecast " + str(config.get('fcstyear')) + " as it is not beyond training period"
                     window.progresslabel.setText(status)
-                    continue
+                    return None
 
                 if predictorStartYr < year_arr[0]:
                     status = "Predictor ("+param+") data starts in " + str(year_arr[0]) + \
                         ", selected options require predictor to start in " + str(predictorStartYr)
                     window.progresslabel.setText(status)
-                    continue
+                    return None
 
                 status = 'predictor data to be used: ' + str(predictorStartYr) + predictorMonth + ' to ' + \
                          str(predictorEndYr) + predictorMonth
@@ -412,9 +412,9 @@ if __name__ == "__main__":
         p.close()
         while (True):
             completed = rs._index
-            if (completed >= len(stations)): break
             status = "completed processing " + str(completed) + " of " + str(len(stations)) + " stations"
             window.progresslabel.setText(status)
+            if (completed >= len(stations)): break
             # print("processing ", completed, " of ", len(stations))
             time.sleep(0.2)
         outs = list(rs)
@@ -446,7 +446,7 @@ if __name__ == "__main__":
                     stationclass = highskilldf.groupby(['ID', 'Lat', 'Lon']).apply(func=weighted_average).to_frame(name='WA')
                     stationclass[['wavg', 'class4', 'class3', 'class2', 'class1']] = pd.DataFrame(stationclass.WA.tolist(), index=stationclass.index)
                     stationclass = stationclass.drop(['WA'], axis=1)
-                    stationclass['class'] = round(stationclass['wavg']).astype(int)
+                    stationclass['class'] = (stationclass['wavg']+0.5).astype(int)
                     stationclassout = forecastdir + os.sep + fcstprefix + '_station-forecast.csv'
                     stationclass.to_csv(stationclassout, header=True, index=True)
                     fcstjsonout = forecastdir + os.sep + fcstprefix + '_station-forecast.geojson'
@@ -494,11 +494,11 @@ if __name__ == "__main__":
                         stationclass[['wavg', 'class4', 'class3', 'class2', 'class1']] = pd.DataFrame(
                             stationclass.WA.tolist(), index=stationclass.index)
                         stationclass = stationclass.drop(['WA'], axis=1)
-                        stationclass['class'] = round(stationclass['wavg']).astype(int)
+                        stationclass['class'] = (stationclass['wavg']+0.5).astype(int)
                         zoneclass = highskilldf.groupby('Zone').apply(func=weighted_average).to_frame(name='WA')
                         zoneclass[['wavg', 'class4', 'class3', 'class2', 'class1']] = pd.DataFrame(zoneclass.WA.tolist(), index=zoneclass.index)
                         zoneclass = zoneclass.drop(['WA'], axis=1)
-                        zoneclass['class'] = round(zoneclass['wavg']).astype(int)
+                        zoneclass['class'] = (zoneclass['wavg']+0.5).astype(int)
                         ZoneID = config['zonevector']['attr'][config['zonevector']['ID']]
                         zonepoints = config.get('plots', {}).get('zonepoints', '0')
                         write_zone_forecast(zonefcstprefix, zoneclass, zonejson, ZoneID, colors, stationclass, zonepoints,
