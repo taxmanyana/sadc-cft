@@ -6,6 +6,8 @@
 #
 import os, re, time
 import pandas as pd
+import matplotlib
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from sklearn import linear_model, cluster
 import statsmodels.api as sm

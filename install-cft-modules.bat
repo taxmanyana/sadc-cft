@@ -136,6 +136,17 @@ IF %errorlevel% NEQ 0 (
   echo shapely already installed
 )
 echo.
+python -c "import descartes" >nul 2>&1
+IF %errorlevel% NEQ 0 (
+  echo installing descartes...
+  python -m pip install --upgrade descartes
+  if %errorlevel% equ 0 (
+   echo descartes installed successfully
+  )
+) else (
+  echo descartes already installed
+)
+echo.
 pause
 exit
 
