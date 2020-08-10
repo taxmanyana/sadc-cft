@@ -37,8 +37,12 @@ Update: Update the installation and startup scripts to auto-detect the QGIS v3 i
 Update: Update the installation scripts to skip installation of modules already installed
 Bugfix: Allow null statistics if testing period has no data
 
-v1.3.0 - 
-Bugfix: ignore stations with few years
-Feature: Add multiple linear-regression (basin level)
-Update: AI
+v1.3.0 - 10 August 2020
+Feature: Add Multilayer Perceptron (MLP) Regression
+Feature: Plot output graphs and maps in PNG format
+Feature: Parallel processing
+Feature: Add basin extent (maxlat, maxlon, minlat, minlon) boxes
+Feature: Keep previous run settings and load as default for next run
+Bugfix: Minor enhancements and bug fixes
+
 
