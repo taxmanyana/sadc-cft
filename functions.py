@@ -2,19 +2,16 @@
 # SARCIS-DR Project
 # Programmer: Thembani Moitlhobogi
 # Theory and Formulas: Sunshine Gamedze, Dr Arlindo Meque, Climate Experts from SADC NHMSs
-# 23 August 2019
+# 10 August 2020
 #
-import os, sys, re, time
+import os, re, time
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.cluster import DBSCAN
-from sklearn import linear_model
+from sklearn import linear_model, cluster
 import statsmodels.api as sm
 from scipy.stats import pearsonr
-from sklearn import cluster as skluster
 from shapely.geometry import shape, Point
-# from itertools import combinations
-# from sklearn.metrics import mean_squared_error, r2_score
+from descartes import PolygonPatch
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
 from osgeo import gdal
@@ -39,6 +36,8 @@ driver = gdal.GetDriverByName('GTiff')
 
 # --- functions ---
 
+def rename(str):
+    return re.sub("[^0-9a-zA-Z]+", " ", str)
 
 def integer(x):
     if np.isfinite(x):
@@ -170,9 +169,9 @@ def season_average(dfm,year,season):
 
 def dbcluster(coordinates, func, n_clusters, mindist, samples, njobs):
     if func == 'kmeans':
-        db = skluster.KMeans(n_clusters=n_clusters).fit(coordinates)
+        db = cluster.KMeans(n_clusters=n_clusters).fit(coordinates)
     if func == 'dbscan':
-        db = DBSCAN(eps=mindist * 1.0 / 6371.0088, min_samples=samples, n_jobs=1)
+        db = cluster.DBSCAN(eps=mindist * 1.0 / 6371.0088, min_samples=samples, n_jobs=1)
         db = db.fit(np.radians(coordinates))
     return db
 
@@ -183,10 +182,8 @@ def data2geojson(dfw, jsonout):
     insert_features = lambda X: features.append(
         geojson.Feature(geometry=geojson.Point((X["Lon"],
                                                 X["Lat"])),
-                        properties=dict(predictor=X["Predictor"], algorithm=X["Algorithm"], ID=X["ID"], tercile1=X["t1"],
-                                        tercile2=X["t2"], tercile3=X["t3"], mean=X["mean"], fcst_precip=X["fcst"],
-                                        fcst_class=X["class"], r2score=X["r2score"], hitscore=X["HS"],
-                                        PB_PN_PA=X["Prob"])))
+                        properties=dict(ID=X["ID"], class4=X["class4"], class3=X["class3"], class2=X["class2"],
+                                        class1=X["class1"], wavg=X["wavg"], fcst_class=X["class"])))
     dfw.apply(insert_features, axis=1)
     with open(jsonout, 'w') as fp:
         geojson.dump(geojson.FeatureCollection(features), fp, sort_keys=False, ensure_ascii=False)
@@ -200,6 +197,16 @@ def whichzone(zonejson, lat, lon, field):
             return feature['properties'][field]
     return None
 
+def whichpolygons(zonejson, coords):
+    polygons = []
+    for f in range(len(zonejson['features'])):
+        feature = zonejson['features'][f]
+        polygon = shape(feature['geometry'])
+        for pts in coords:
+            point = Point(pts[0], pts[1])
+            if polygon.contains(point):
+                polygons.append(f)
+    return np.unique(polygons)
 
 def zonelist(zonejson, field):
     zarr = []
@@ -207,28 +214,83 @@ def zonelist(zonejson, field):
         zarr.append(feature['properties'][field])
     return zarr
 
-def write_forecast(prefix, forecast_df, outdir):
-    fcstjsonout = outdir + os.sep + prefix + '_forecast.geojson'
-    data2geojson(forecast_df,fcstjsonout)
-    fcstcsvout = outdir + os.sep + prefix + '_forecast.csv'
-    forecast_df.to_csv(fcstcsvout, header=True, index=True)
+def station_forecast_png(prefix, stationclass, base_map, colors, outdir, fcstName):
+    DPI = 150
+    W = 1000
+    H = 1000
+    stationclass = stationclass.reset_index()
+    fig = plt.figure(figsize=(W / float(DPI), H / float(DPI)), frameon=True, dpi=DPI)
+    ax = fig.gca()
+    xs, _ = stationclass.shape
+    if base_map is not None:
+        coords = list(stationclass[['Lon', 'Lat']].to_records(index=False))
+        polygons = whichpolygons(base_map, coords)
+        for polygon in polygons:
+            feature = base_map['features'][polygon]
+            poly = feature['geometry']
+            ax.add_patch(PolygonPatch(poly, fc='#ffffff', ec='#8f8f8f', alpha=1.0, zorder=2))
+    for x in range(xs):
+        fclass = stationclass.iloc[x]['class']
+        name = stationclass.iloc[x]['ID']
+        color = colors.get('class'+str(fclass), 'class0')
+        midx = stationclass.iloc[x]['Lon']
+        midy = stationclass.iloc[x]['Lat']
+        plt.plot(midx, midy, color=color, marker='o', markersize=8)
+        plt.text(midx, midy, name, fontsize=6)
 
-def write_zone_forecast(zonefcstprefix, fcstzone_df, forecastjson, ZoneID):
+    plt.title(fcstName + ' Forecast', fontsize=12)
+    plt.xlabel('Longitude', fontsize=10)
+    plt.ylabel('Latitude', fontsize=10)
+    ax.axis('scaled')
+    plt.savefig(outdir + os.sep + prefix + '_station-forecast.png', bbox_inches = 'tight')
+
+def write_zone_forecast(zonefcstprefix, fcstzone_df, forecastjson, ZoneID, colors, stationclass, zonepoints, fcstName):
     ids = list(fcstzone_df.reset_index()['Zone'])
     fcstjsonout = zonefcstprefix + '_zone-forecast.geojson'
     fcstcsvout = zonefcstprefix + '_zone-forecast.csv'
     for feature in forecastjson['features']:
         ID = feature['properties'][ZoneID]
         if ID in ids:
-            feature['properties']['n4'] = list(fcstzone_df.loc[[ID],'n4'])[0]
-            feature['properties']['n3'] = list(fcstzone_df.loc[[ID],'n3'])[0]
-            feature['properties']['n2'] = list(fcstzone_df.loc[[ID],'n2'])[0]
-            feature['properties']['n1'] = list(fcstzone_df.loc[[ID],'n1'])[0]
+            feature['properties']['class4'] = list(fcstzone_df.loc[[ID],'class4'])[0]
+            feature['properties']['class3'] = list(fcstzone_df.loc[[ID],'class3'])[0]
+            feature['properties']['class2'] = list(fcstzone_df.loc[[ID],'class2'])[0]
+            feature['properties']['class1'] = list(fcstzone_df.loc[[ID],'class1'])[0]
             feature['properties']['wavg'] = list(fcstzone_df.loc[[ID],'wavg'])[0]
-            feature['properties']['class'] = list(fcstzone_df.loc[[ID],'class'])[0]
+            feature['properties']['fcst_class'] = list(fcstzone_df.loc[[ID],'class'])[0]
     fcstzone_df.to_csv(fcstcsvout, header=True, index=True)
     with open(fcstjsonout, 'w') as fp:
         geojson.dump(forecastjson, fp)
+    DPI = 150
+    W = 1000
+    H = 1000
+    fig = plt.figure(figsize=(W / float(DPI), H / float(DPI)), frameon=True, dpi=DPI)
+    ax = fig.gca()
+    features = forecastjson['features']
+    for feature in features:
+        fclass = 'class'+str(feature['properties'].get('fcst_class', 0))
+        poly = feature['geometry']
+        name = feature['properties'][ZoneID]
+        color = colors[fclass]
+        xs = [x[0] for x in feature['geometry']['coordinates'][0][0]]
+        ys = [x[1] for x in feature['geometry']['coordinates'][0][0]]
+        midx = np.min(xs) + 0.25 * (np.max(xs) - np.min(xs))
+        midy = np.max(ys) - 0.25 * (np.max(ys) - np.min(ys))
+        ax.add_patch(PolygonPatch(poly, fc=color, ec='#6699cc', alpha=0.5, zorder=2))
+        plt.text(midx, midy, name, fontsize=8)
+    if str(zonepoints) == '1':
+        stationclass = stationclass.reset_index()
+        xs, _ = stationclass.shape
+        for x in range(xs):
+            fclass = stationclass.iloc[x]['class']
+            color = colors.get('class' + str(fclass), 'class0')
+            lon = stationclass.iloc[x]['Lon']
+            lat = stationclass.iloc[x]['Lat']
+            plt.plot(lon, lat, color='#bebebe', marker='o', markersize=5, markerfacecolor=color)
+    ax.axis('scaled')
+    plt.title(fcstName + ' Forecast', fontsize=12)
+    plt.xlabel('Longitude', fontsize=10)
+    plt.ylabel('Latitude', fontsize=10)
+    plt.savefig(zonefcstprefix + '_zone-forecast.png', bbox_inches = 'tight')
 
 def weighted_average(group):
    HS = group['HS']
@@ -240,39 +302,13 @@ def weighted_average(group):
    wavg = np.average(fclass,weights=HS)
    return wavg, n4, n3, n2, n1
 
-# def write_zone_forecast(prefix, forecastjson, zoneID, fcstzone, zones, outpath):
-#     fcstzone_df = pd.DataFrame(columns=['ZoneID','t1','t2','t3','mean','fcst','class','hitscore','PB_PN_PA'])
-#     fcstzone_df['ZoneID'] = zones
-#     fcstzone_df.set_index('ZoneID', inplace=True)
-#     for zone in fcstzone.keys():
-#         fcstzone_df.loc[[zone], 't1'] = fcstzone[zone][0]
-#         fcstzone_df.loc[[zone], 't2'] = fcstzone[zone][1]
-#         fcstzone_df.loc[[zone], 't3'] = fcstzone[zone][2]
-#         fcstzone_df.loc[[zone], 'mean'] = fcstzone[zone][3]
-#         fcstzone_df.loc[[zone], 'fcst'] = fcstzone[zone][4]
-#         fcstzone_df.loc[[zone], 'class'] = fcstzone[zone][5]
-#         fcstzone_df.loc[[zone], 'hitscore'] = fcstzone[zone][6]
-#         fcstzone_df.loc[[zone], 'PB_PN_PA'] = str(fcstzone[zone][7]).replace('nan','')
-#     fcstzone_df = fcstzone_df.fillna('')
-#     fcstoutdir = outpath + os.sep + "forecast"
-#     os.makedirs(fcstoutdir, exist_ok=True)
-#     fcstjsonout = fcstoutdir + os.sep + prefix + '_zone-forecast.geojson'
-#     fcstcsvout = fcstoutdir + os.sep + prefix + '_zone-forecast.csv'
-#     for feature in forecastjson['features']:
-#         ID = feature['properties'][zoneID]
-#         if not fcstzone.get(ID, None) == None:
-#             feature['properties']['t1'] = list(fcstzone_df.loc[[ID],'t1'])[0]
-#             feature['properties']['t2'] = list(fcstzone_df.loc[[ID],'t2'])[0]
-#             feature['properties']['t3'] = list(fcstzone_df.loc[[ID],'t3'])[0]
-#             feature['properties']['mean'] = list(fcstzone_df.loc[[ID],'mean'])[0]
-#             feature['properties']['fcst'] = list(fcstzone_df.loc[[ID],'fcst'])[0]
-#             feature['properties']['class'] = list(fcstzone_df.loc[[ID],'class'])[0]
-#             feature['properties']['hitscore'] = list(fcstzone_df.loc[[ID],'hitscore'])[0]
-#             feature['properties']['PB_PN_PA'] = list(fcstzone_df.loc[[ID],'PB_PN_PA'])[0]
-#     fcstzone_df.to_csv(fcstcsvout, header=True, index=True)
-#     with open(fcstjsonout, 'w') as fp:
-#         geojson.dump(forecastjson, fp)
-#
+def convert(seconds):
+    seconds = seconds % (24 * 3600)
+    hour = seconds // 3600
+    seconds %= 3600
+    minutes = seconds // 60
+    seconds %= 60
+    return "%d hour(s) %d minute(s) %d second(s)" % (hour, minutes, seconds)
 
 def model_skill(fcst_df, lim1, lim2):
     HS = 0
@@ -373,91 +409,6 @@ def plot_Station_forecast(forecast_df, fcstPeriod, graphpng, station, q1, q2, q3
     plt.savefig(graphpng, bbox_inches = 'tight')
 
 
-# def best_basins(all_basins, basin_matrix, actual, trainingYears, sstyears, includeScore):
-#     combos = {}
-#     regrFormula = {}
-#     r2scores = []
-#     ntest_actualyrs = len(trainingYears)
-#     ntest_sstyears = len(trainingYears)
-#     if includeScore:
-#         ntest_actualyrs = len(actual)
-#     r2scores_df = pd.DataFrame(columns=['r2_score', 'Basin combination'])
-#     regr = linear_model.LinearRegression()
-#     combinations_all = sum([list(map(list, combinations(all_basins, i))) for i in range(len(all_basins) + 1)], [])
-#     for cmb in range(len(combinations_all)):
-#         fcst = []
-#         comb = combinations_all[cmb]
-#         if len(comb) < 1: continue
-#         combos.update( {cmb : comb} )
-#         combo_basin_matrix = np.zeros((len(sstyears), len(comb))) * np.nan
-#         # loop for all years where SST is available
-#         for yr in range(len(sstyears)):
-#             for group in range(len(comb)):
-#                 # get corresponding sst average for the group from main basin_matrix
-#                 combo_basin_matrix[yr][group] = basin_matrix[yr][all_basins.index(comb[group])]
-#         training_combo_basin_matrix = combo_basin_matrix[:len(trainingYears)]
-#         training_actual = actual[:len(trainingYears)]
-#         notnull = np.isfinite(training_actual)
-#         regr.fit(training_combo_basin_matrix[notnull], training_actual[notnull])
-#         intercept = regr.intercept_
-#         coefficients = regr.coef_
-#         test_combo_basin_matrix = np.asarray(combo_basin_matrix)
-#         test_actual = list(actual[:len(trainingYears)])
-#         notnull = np.isfinite(test_actual)
-#         for yr in range(len(sstyears)):
-#             fcst.append(round(regr.predict([test_combo_basin_matrix[yr]])[0], 1))
-#         r2score = r2_score(np.asarray(test_actual)[:len(trainingYears)][notnull], np.asarray(fcst)[:len(trainingYears)][notnull])
-#         r2scores.append(r2score)
-#         r2scores_df = r2scores_df.append({'r2_score': r2score, 'Basin combination': comb}, ignore_index=True)
-#         if r2score >= max(r2scores):
-#             final_basins = comb
-#             final_basin_matrix = test_combo_basin_matrix
-#             final_forecasts = np.zeros(len(fcst)) * np.nan
-#             final_forecasts[np.array(fcst) >= 0] = np.array(fcst)[np.array(fcst) >= 0]
-#             bestr2score = r2score
-#             regrFormula = {"intercept": intercept, "coefficients": coefficients}
-#     return bestr2score, final_basins, final_forecasts, final_basin_matrix, r2scores_df, regrFormula
-
-
-# def best_basins_model(all_basins, basin_matrix, actual, trainingYears, sstyears, includeScore, stepwisePvalue):
-#     ntest_actualyrs = len(trainingYears)
-#     if includeScore:
-#         ntest_actualyrs = len(actual)
-#     basin_matrix_df = pd.DataFrame(list(basin_matrix[:len(trainingYears)]), columns=all_basins)
-#     notnull = np.isfinite(np.array(actual[:len(trainingYears)]))
-#     final_basins, comments = stepwise_selection(basin_matrix_df[notnull], list(actual[:len(trainingYears)][notnull]),
-#                                                 initial_list=all_basins, threshold_out=stepwisePvalue)
-#     comment_df = pd.DataFrame(columns=['Comment'])
-#     comment_df['Comment'] = comments
-#     r2scores_df = pd.DataFrame(columns=['r2_score', 'Basin combination'])
-#     regr = linear_model.LinearRegression()
-#     fcst = []
-#     combo_basin_matrix = np.zeros((len(sstyears), len(final_basins))) * np.nan
-#     # loop for all years where SST is available
-#     for yr in range(len(sstyears)):
-#         for group in range(len(final_basins)):
-#             # get corresponding sst average for the group from main basin_matrix
-#             combo_basin_matrix[yr][group] = basin_matrix[yr][all_basins.index(final_basins[group])]
-#
-#     training_combo_basin_matrix = combo_basin_matrix[:len(trainingYears)]
-#     training_actual = actual[:len(trainingYears)]
-#     notnull = np.isfinite(training_actual)
-#     regr.fit(training_combo_basin_matrix[notnull], np.asarray(training_actual)[notnull])
-#     intercept = regr.intercept_
-#     coefficients = regr.coef_
-#     regrFormula = {"intercept": intercept, "coefficients": coefficients}
-#     test_actual = list(actual[:len(trainingYears)])
-#     notnull = np.isfinite(test_actual)
-#     for yr in range(len(sstyears)):
-#         fcst.append(round(regr.predict([np.asarray(combo_basin_matrix)[yr]])[0], 1))
-#     bestr2score = r2_score(np.asarray(actual[:len(trainingYears)])[notnull], np.asarray(fcst[:len(trainingYears)])[notnull])
-#     r2scores_df = r2scores_df.append({'r2_score': bestr2score, 'Basin combination': final_basins}, ignore_index=True)
-#     final_basin_matrix = combo_basin_matrix
-#     final_forecasts = np.zeros(len(fcst)) * np.nan
-#     final_forecasts[np.array(fcst) >= 0] = np.array(fcst)[np.array(fcst) >= 0]
-#     return bestr2score, final_basins, final_forecasts, final_basin_matrix, r2scores_df, regrFormula, comment_df
-
-
 def writeout(prefix, r_matrix, p_matrix, corgrp_matrix, corr_df, lats, lons, outdir):
     ncolssst = len(lons)
     nrowssst = len(lats)
@@ -500,314 +451,6 @@ def writeout(prefix, r_matrix, p_matrix, corgrp_matrix, corr_df, lats, lons, out
     corr_df.to_csv(csv)
 
 
-# def lregression(prefixParam, predictant, sst, lats, lons, PValue, selectMode, includeScore, stepwisePvalue, outdir):
-#     trainStartYear = int(prefixParam["startyr"])
-#     trainEndYear = int(prefixParam["endyr"])
-#     fcstYear = int(prefixParam["fcstYear"])
-#     fcstPeriod = prefixParam["fcstPeriod"]
-#     name = re.sub('[^a-zA-Z0-9]', '', prefixParam["station"])
-#     prefix = prefixParam["Predictor"] + '_' + prefixParam["Param"] + '_' + prefixParam["PredictorMonth"] + '_' + \
-#              str(prefixParam["startyr"]) + '-' + str(prefixParam["endyr"]) + '_' + name
-#     years = [yr for yr in range(trainStartYear, trainEndYear + 1)]
-#     nyears = len(years)
-#     SSTclusterSize = 1000.
-#     trainPredictant = predictant[:nyears]
-#     trainSST = sst[:nyears]
-#     pnotnull = np.isfinite(trainPredictant)
-#     nyearssst, nrowssst, ncolssst = sst.shape
-#     yearssst = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
-#     nsst = sst[yearssst.index(fcstYear)]
-#     lons2d, lats2d = np.meshgrid(lons, lats)
-#     # calculate correlation
-#     r_matrix = np.zeros((nrowssst, ncolssst))
-#     p_matrix = np.zeros((nrowssst, ncolssst))
-#     # calculate correlation
-#     for row in range(nrowssst):
-#         for col in range(ncolssst):
-#             sstvals = np.array(trainSST[:, row][:, col], dtype=float)
-#             try:
-#                 notnull = pnotnull & np.isfinite(sstvals)
-#                 r_matrix[row][col], p_matrix[row][col] = pearsonr(trainPredictant[notnull], sstvals[notnull])
-#             except:
-#                 pass
-#     #corr = (p_matrix <= PValue) & (abs(r_matrix) >= 0.5)
-#     corr = (p_matrix <= PValue)
-#     if not corr.any():
-#         return 0
-#     corr_coords = list(zip(lons2d[corr], lats2d[corr]))
-#     # create correlation basins
-#     corgrp_matrix = np.zeros((nrowssst, ncolssst)) * np.nan
-#
-#     minx = 0
-#     maxx = 366
-#     miny = -90
-#     maxy = 90
-#     roi = [False] * len(corr_coords)
-#     for i in range(len(corr_coords)):
-#         if corr_coords[i][0] < minx or corr_coords[i][0] > maxx or corr_coords[i][1] < miny or corr_coords[i][1] > maxy:
-#             roi[i] = True
-#
-#     db = dbcluster(corr_coords, 'dbscan', 5, SSTclusterSize, 3, 2)
-#     coords_clustered = np.array(db.labels_)
-#     coords_clustered[roi] = -1
-#     uniq = list(set(coords_clustered))
-#     minpixelperbasin = 6
-#     # if len(uniq) <= 15:
-#     #     minpixelperbasin = 6
-#     # else:
-#     #     minpixelperbasin = 13
-#     for zone in uniq:
-#         count = len(coords_clustered[coords_clustered == zone])
-#         if count < minpixelperbasin: coords_clustered[coords_clustered == zone] = -1
-#
-#     basins = list(set(coords_clustered[coords_clustered != -1]))
-#     if len(basins) == 0: return None, None, None, None, None, None, None, None
-#     SSTzones = len(basins)
-#     if corr[corr == True].shape == coords_clustered.shape:
-#         index = 0
-#         for row in range(nrowssst):
-#             for col in range(ncolssst):
-#                 if corr[row][col]:
-#                     corgrp_matrix[row][col] = coords_clustered[index]
-#                     index = index + 1
-#     # generate correlation group matrices
-#     basin_arr = ['Basin' + str(x) for x in basins]
-#     basin_arr.insert(0, fcstPeriod)
-#     basin_arr.insert(0, 'year')
-#     corr_df = pd.DataFrame(columns=basin_arr)
-#     corr_df['year'] = years
-#     corr_df[fcstPeriod] = trainPredictant
-#     corr_df.set_index('year', inplace=True)
-#     basin_matrix = np.zeros((nyearssst, SSTzones))
-#     for yr in range(nyearssst):
-#         year = yearssst[yr]
-#         sstavg = np.zeros(SSTzones)
-#         for group in range(SSTzones):
-#             sstavg[group] = "{0:.3f}".format(np.mean(sst[yr][corgrp_matrix == basins[group]]))
-#             corr_df.loc[year, 'Basin' + str(basins[group])] = sstavg[group]
-#             basin_matrix[yr][group] = sstavg[group]
-#     corroutdir = outdir + os.sep + "correlation"
-#     # writeout(prefix, p_matrix, corgrp_matrix, corr_df, lats, lons, corroutdir)
-#     writeout(prefix, r_matrix, p_matrix, corgrp_matrix, corr_df, lats, lons, corroutdir)
-#     regoutdir = outdir + os.sep + "regression"
-#     os.makedirs(regoutdir, exist_ok=True)
-#     # get basin combination with highest r-square: returns bestr2score, final_basins, final_basin_matrix
-#     print('checking best basin combination...')
-#     if selectMode == 1:
-#         try:
-#             r2score, basin_arr, final_forecasts, basin_matrix, r2scores_df, regrFormula, comment_df = \
-#                 best_basins_model(basins, basin_matrix, predictant, years, yearssst, includeScore, stepwisePvalue)
-#             csv = regoutdir + os.sep + prefix + '_forward-selection.csv'
-#             comment_df.to_csv(csv, header=True, index=False)
-#             # LassoScore_df.to_csv(csv, mode='a', header=True, index=False)
-#         except:
-#             r2score, basin_arr, final_forecasts, basin_matrix, r2scores_df, regrFormula = best_basins(basins, basin_matrix,
-#                                                                                            predictant, years, yearssst,
-#                                                                                            includeScore)
-#     else:
-#         r2score, basin_arr, final_forecasts, basin_matrix, r2scores_df, regrFormula = best_basins(basins, basin_matrix,
-#                                                                                                   predictant, years,
-#                                                                                                   yearssst, includeScore)
-#     # write basin combination scores to csv
-#     csv = regoutdir + os.sep + prefix + '_basin-combinations.csv'
-#     r2scores_df.sort_values('r2_score', axis=0, ascending=True, inplace=True, na_position='last')
-#     r2scores_df.reset_index()
-#     r2scores_df.to_csv(csv, index=False)
-#     # write regression formula to file
-#     selected_basins = ['Basin' + str(x) for x in basin_arr]
-#     selected_basins.insert(0, 'y_intercept')
-#     coeff_arr = list(regrFormula["coefficients"])
-#     coeff_arr.insert(0, regrFormula["intercept"])
-#     reg_df = pd.DataFrame(columns=selected_basins)
-#     reg_df.loc[0] = coeff_arr
-#     csv = regoutdir + os.sep + prefix + '_correlation-formula.csv'
-#     reg_df.to_csv(csv, index=False)
-#     # write forecasts to file
-#     fcstColumns = ['Year', fcstPeriod, 'Forecast']
-#     fcst_df = pd.DataFrame(columns=fcstColumns)
-#     fcst_df['Year'] = yearssst
-#     fcst_df[fcstPeriod] = predictant[:nyearssst]
-#     fcst_df['Forecast'] = final_forecasts[:nyearssst]
-#     fcst_df.set_index('Year', inplace=True)
-#     csv = regoutdir + os.sep + prefix + '_yearly-forecasts.csv'
-#     fcst_df.reset_index()
-#     fcst_df.to_csv(csv, index=True)
-#     # generate model skill statistics and write to file
-#     limits = [0.3333,0.6667]
-#     tercileyears = nyearssst
-#     if not includeScore:
-#         nrecentyears = nyearssst - nyears
-#         fcst_df = fcst_df[-nrecentyears:]
-#         tercileyears = nyears
-#     t1, t2 = list(fcst_df[fcstPeriod][:tercileyears].quantile(limits))
-#     fcst_df = fcst_df.rename(columns={fcstPeriod: "obs", "Forecast": "fcst"})
-#     HS, HSS, POD_below, POD_normal, POD_above, FA_below, FA_normal, FA_above, cgtable_df, PB, PN, PA = \
-#         model_skill(fcst_df, t1, t2)
-#     skillColumns = ['Statistic', 'Value']
-#     skill_df = pd.DataFrame(columns=skillColumns)
-#     skill_df['Statistic'] = ['R-Squared Score', 'Hit Score (HS)', 'Hit Skill Score (HSS)',
-#                              'Probability of Detecting Below', 'Probability of Detecting Normal',
-#                              'Probability of Detecting Above', 'False Alarm 1st Order (Below)',
-#                              'False Alarm 1st Order (Normal)', 'False Alarm 1st Order (Above)',
-#                              'Probability Forecast For Below-Normal', 'Probability Forecast For Near-Normal',
-#                              'Probability Forecast For Above-Normal']
-#     skill_df['Value'] = [r2score, HS, HSS, POD_below, POD_normal, POD_above, FA_below, FA_normal, FA_above, PB, PN, PA]
-#     csv = regoutdir + os.sep + prefix + '_score-contingency-table.csv'
-#     cgtable_df.to_csv(csv, index=False)
-#     csv = regoutdir + os.sep + prefix + '_score-statistics.csv'
-#     skill_df.to_csv(csv, index=False)
-#     # classify forecast
-#     fcst_precip = round(final_forecasts[yearssst.index(fcstYear)], 1)
-#     if fcst_precip < 0:  fcst_precip = 0.0
-#     qlimits = [0.33, 0.5, 0.66]
-#     dfp = pd.DataFrame(trainPredictant[pnotnull], columns=['avgrain']).quantile(qlimits)
-#     q1 = float(round(dfp.loc[qlimits[0]], 1))
-#     q2 = float(round(dfp.loc[qlimits[1]], 1))
-#     q3 = float(round(dfp.loc[qlimits[2]], 1))
-#     forecast_class = np.nan
-#     Prob = np.nan
-#     if fcst_precip <= q1:
-#         forecast_class = 1
-#         Prob = PB
-#     if fcst_precip >= q1:
-#         forecast_class = 2
-#         Prob = PN
-#     if fcst_precip >= q2:
-#         forecast_class = 3
-#         Prob = PN
-#     if fcst_precip >= q3:
-#         forecast_class = 4
-#         Prob = PA
-#     pmean = round(np.mean(trainPredictant[pnotnull]), 1)
-#     return q1, q2, q3, pmean, fcst_precip, forecast_class, HS, str(Prob).replace(',',':')
-
-
-# def forecast_point(predictor, param, predictorMonth, fcstPeriodType, station, station_data_all, sst_arr, lats, lons,
-#                    trainStartYear, trainEndYear, predictorStartYr, fcstYear, fcstPeriod, PValue, composition,
-#                    selectMode, includeScore, stepwisePvalue, outDir):
-#     predictorName = os.path.splitext(os.path.basename(predictor))[0]
-#     prefixParam = {"Predictor": predictorName, "Param": param, "PredictorMonth": predictorMonth, "startyr": trainStartYear,
-#                    "endyr": trainEndYear, "fcstYear": fcstYear, "fcstPeriod": fcstPeriod, "station": str(station)}
-#     years = [yr for yr in range(trainStartYear, trainEndYear + 1)]
-#     nyearssst, nrowssst, ncolssst = sst_arr.shape
-#     yearssst = [yr for yr in range(predictorStartYr, (predictorStartYr + nyearssst))]
-#     yearspredictant = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
-#     station_data = station_data_all.loc[:,
-#                    ('Year', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')]
-#     station_data.drop_duplicates('Year', inplace=True)
-#     station_data = station_data.apply(pd.to_numeric, errors='coerce')
-#     seasonal_precip = pd.DataFrame(columns=['Year',fcstPeriod])
-#     seasonal_precip['Year'] = yearspredictant
-#     seasonal_precip.set_index('Year', inplace=True)
-#     station_data.set_index('Year', inplace=True)
-#     for year in yearspredictant:
-#         if fcstPeriodType == 0:
-#             if composition == "Cumulation":
-#                 seasonal_precip.loc[[year], fcstPeriod] = season_cumulation(station_data, year, fcstPeriod)
-#             else:
-#                 seasonal_precip.loc[[year], fcstPeriod] = season_average(station_data, year, fcstPeriod)
-#         else:
-#             try:
-#                 seasonal_precip.loc[[year], fcstPeriod] = round(float(station_data.loc[[year], fcstPeriod]), 1)
-#             except KeyError:
-#                 seasonal_precip.loc[[year], fcstPeriod] = np.nan
-#
-#     station_precip = np.asarray(seasonal_precip, dtype=float).reshape(-1, )
-#     # print(prefixParam, station_precip, sst_arr, lats, lons, PValue, selectMode, includeScore,
-#     #                    stepwisePvalue, outDir)
-#     return lregression(prefixParam, station_precip, sst_arr, lats, lons, PValue, selectMode, includeScore,
-#                        stepwisePvalue, outDir)
-#
-#
-# def forecast_zone(predictor, param, predictorMonth, fcstPeriodType, zone, zonestation, station_data_all, sst_arr,
-#                   lats, lons, trainStartYear, trainEndYear, predictorStartYr, fcstYear,
-#                   fcstPeriod, PValue, composition, selectMode, includeScore, stepwisePvalue, outDir):
-#     precip_dfs = []
-#     predictorName = os.path.splitext(os.path.basename(predictor))[0]
-#     prefixParam = {"Predictor": predictorName, "Param": param, "PredictorMonth": predictorMonth, "startyr": trainStartYear,
-#                    "endyr": trainEndYear, "fcstYear": fcstYear, "fcstPeriod": fcstPeriod, "station": str(zone)}
-#     years = [yr for yr in range(trainStartYear, trainEndYear + 1)]
-#     nyearssst, nrowssst, ncolssst = sst_arr.shape
-#     yearssst = [yr for yr in range(predictorStartYr, (predictorStartYr + nyearssst))]
-#     yearspredictant = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
-#     for station in zonestation[zone]:
-#         nzonestations = len(zonestation[zone])
-#         station_data = station_data_all.loc[station_data_all['ID'] == station]
-#         station_data = station_data.loc[:,
-#                        ('Year', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')]
-#         station_data.drop_duplicates('Year', inplace=True)
-#         station_data = station_data.apply(pd.to_numeric, errors='coerce')
-#         station_data.set_index('Year', inplace=True)
-#         seasonal_precip = pd.DataFrame(columns=['Year', fcstPeriod])
-#         seasonal_precip['Year'] = yearspredictant
-#         seasonal_precip.set_index('Year', inplace=True)
-#         for year in yearspredictant:
-#             if fcstPeriodType == 0:
-#                 if composition == "Cumulation":
-#                     seasonal_precip.loc[[year], fcstPeriod] = season_cumulation(station_data, year, fcstPeriod)
-#                 else:
-#                     seasonal_precip.loc[[year], fcstPeriod] = season_average(station_data, year, fcstPeriod)
-#             else:
-#                 try:
-#                     seasonal_precip.loc[[year], fcstPeriod] = round(float(station_data.loc[[year], fcstPeriod]), 1)
-#                 except KeyError:
-#                     seasonal_precip.loc[[year], fcstPeriod] = np.nan
-#         precip_dfs.append(seasonal_precip)
-#     precip_concat = pd.concat((precip_dfs), axis=1)
-#     zone_precip = np.asarray(precip_concat.mean(axis=1)).reshape(-1, )
-#     return lregression(prefixParam, zone_precip, sst_arr, lats, lons, PValue, selectMode, includeScore,
-#                        stepwisePvalue, outDir)
-#
-#
-# def forecast_point(station_id):
-#     global config
-#     global predictordict
-#     global fcstPeriod
-#     global predictantdict
-#     station = predictantdict['stations'][station_id]
-#     input_data = predictantdict['data']
-#     station_data_all =  input_data.loc[input_data['ID'] == station]
-#     outDir = config.get('outDir') + os.sep + 'Forecast_' + str(config.get('fcstyear')) + \
-#               '_' + fcstPeriod + os.sep + 'LR'
-#     for predictorName in predictordict:
-#         predictorStartYr = predictordict[predictorName]['predictorStartYr']
-#         sst_arr = predictordict[predictorName]['sst_arr']
-#         trainStartYear = config['trainStartYear']
-#         fcstPeriodType = config['fcstPeriodType']
-#         prefixParam = {"Predictor": predictorName, "Param": predictordict[predictorName]['param'],
-#                        "PredictorMonth": predictordict[predictorName]['predictorMonth'],
-#                        "startyr": trainStartYear, "endyr": config['trainEndYear'],
-#                        "fcstYear": config['fcstyear'], "fcstPeriod": fcstPeriod, "station": str(station)}
-#         years = [yr for yr in range(int(config['trainStartYear']), int(config['trainEndYear']) + 1)]
-#         nyearssst, nrowssst, ncolssst = sst_arr.shape
-#         yearssst = [yr for yr in range(predictorStartYr, (predictorStartYr + nyearssst))]
-#         yearspredictant = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
-#         station_data = station_data_all.loc[:,
-#                        ('Year', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')]
-#         station_data.drop_duplicates('Year', inplace=True)
-#         station_data = station_data.apply(pd.to_numeric, errors='coerce')
-#         seasonal_precip = pd.DataFrame(columns=['Year',fcstPeriod])
-#         seasonal_precip['Year'] = yearspredictant
-#         seasonal_precip.set_index('Year', inplace=True)
-#         station_data.set_index('Year', inplace=True)
-#         for year in yearspredictant:
-#             if fcstPeriodType == 0:
-#                 if composition == "Cumulation":
-#                     seasonal_precip.loc[[year], fcstPeriod] = season_cumulation(station_data, year, fcstPeriod)
-#                 else:
-#                     seasonal_precip.loc[[year], fcstPeriod] = season_average(station_data, year, fcstPeriod)
-#             else:
-#                 try:
-#                     seasonal_precip.loc[[year], fcstPeriod] = round(float(station_data.loc[[year], fcstPeriod]), 1)
-#                 except KeyError:
-#                     seasonal_precip.loc[[year], fcstPeriod] = np.nan
-#
-#         station_precip = np.asarray(seasonal_precip, dtype=float).reshape(-1, )
-#         # print(prefixParam, station_precip, sst_arr, lats, lons, PValue, selectMode, includeScore,
-#         #                    stepwisePvalue, outDir)
-#     return lregression(prefixParam, station_precip, sst_arr, lats, lons, PValue, selectMode, includeScore,
-#                        stepwisePvalue, outDir)
-#
 def run_model_skill(fcst_df, fcstPeriod, fcstcol, r2score, training_actual):
     # generate model skill statistics and write to file
     limits = [0.3333, 0.6667]
@@ -828,11 +471,6 @@ def run_model_skill(fcst_df, fcstPeriod, fcstcol, r2score, training_actual):
                              'Probability Forecast For Above-Normal']
     skill_df['Value'] = [r2score, HS, HSS, POD_below, POD_normal, POD_above, FA_below, FA_normal, FA_above, PB,
                          PN, PA]
-    # csv = regoutdir + os.sep + prefix + '_score-contingency-table.csv'
-    # cgtable_df.to_csv(csv, index=False)
-    # csv = regoutdir + os.sep + prefix + '_score-statistics.csv'
-    # skill_df.to_csv(csv, index=False)
-    # classify forecast
     if fcst_precip < 0:  fcst_precip = 0.0
     qlimits = [0.33, 0.5, 0.66]
     dfp = pd.DataFrame(observed_clean)[0].quantile(qlimits)
@@ -940,7 +578,7 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                     r_matrix[row][col], p_matrix[row][col] = pearsonr(trainPredictant[notnull], sstvals[notnull])
                 except:
                     pass
-        # corr = (p_matrix <= PValue) & (abs(r_matrix) >= 0.5)
+        # corr = (p_matrix <= config['PValue']) & (abs(r_matrix) >= 0.5)
         corr = (p_matrix <= config['PValue'])
         if not corr.any():
             return 0
@@ -948,10 +586,10 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         # create correlation basins
         corgrp_matrix = np.zeros((nrowssst, ncolssst)) * np.nan
 
-        minx = 0
-        maxx = 366
-        miny = -90
-        maxy = 90
+        minx = float(config.get('basinbounds',{}).get('minlon', -180))
+        maxx = float(config.get('basinbounds',{}).get('maxlon', 366))
+        miny = float(config.get('basinbounds',{}).get('minlat', -90))
+        maxy = float(config.get('basinbounds',{}).get('maxlat', 90))
         roi = [False] * len(corr_coords)
         for i in range(len(corr_coords)):
             if corr_coords[i][0] < minx or corr_coords[i][0] > maxx or corr_coords[i][1] < miny or \
@@ -1011,14 +649,18 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         print('checking best basin combination...')
         basin_matrix_df = pd.DataFrame(basin_matrix[:len(trainingYears)], columns=basin_arr)
         notnull = np.isfinite(np.array(predictant[:len(trainingYears)]))
-        final_basins, comments = stepwise_selection(basin_matrix_df[notnull].astype(float),
+        try:
+            final_basins, comments = stepwise_selection(basin_matrix_df[notnull].astype(float),
                                                     list(predictant[:len(trainingYears)][notnull]),
                                                     initial_list=basin_arr, threshold_out=config['stepwisePvalue'])
-
+        except:
+            final_basins = basin_arr[:]
+            comments = []
         selected_basins = final_basins[:]
         if len(final_basins) == 0:
             selected_basins = basin_arr[:]
             final_basins = basin_arr[:]
+            comments = []
         selected_basins.insert(0, 'y_intercept')
         comments.append("Final basins: " + str(final_basins))
         csv = corroutdir + os.sep + prefix + '_forward-selection.csv'
@@ -1044,7 +686,6 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         StandardScaler(copy=True, with_mean=True, with_std=True)
         X_train = scaler.transform(training_Xmatrix)
         X_test = scaler.transform(testing_Xmatrix)
-
         regoutdir = outdir + os.sep + "Regression"
         os.makedirs(regoutdir, exist_ok=True)
 
@@ -1080,57 +721,59 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
 
                 combs = sorted(ratings.items(), key=lambda xx: xx[1][0], reverse=True)
                 v = np.std(np.ravel(test_actual[test_notnull]))
+                r, s = None, None
                 for x in range(len(combs)):
                     if combs[x][1][0] >= 0.1 and combs[x][1][1] >= v / 2:
                         r, s = combs[x][0].split('_')
                         break
-                if int(s) == 0:
-                    hiddenlayerSize = (int(r),)
-                else:
-                    hiddenlayerSize = (int(r), int(s),)
-                regm = MLPRegressor(hidden_layer_sizes=hiddenlayerSize,
-                                    activation=activation_fn, solver=solver_fn, random_state=42, max_iter=700)
-                regm.fit(X_train[notnull], np.asarray(training_actual)[notnull])
-                mlp_fcstdf = pd.DataFrame(columns=['Year', fcstPeriod, 'MLPfcst'])
-                mlp_fcstdf['Year'] = testing_years
-                mlp_fcstdf[fcstPeriod] = test_actual
-                mlp_fcstdf.set_index('Year', inplace=True)
-                for yr in range(len(testing_years)):
-                    year = testing_years[yr]
-                    mlp_fcstdf.loc[year, 'MLPfcst'] = regm.predict(X_test[yr].reshape(1, -1))[0]
-                warnings.filterwarnings('error')
-                m, n = pearsonr(np.array(mlp_fcstdf['MLPfcst'])[test_notnull], list(np.ravel(test_actual[test_notnull])))
-                r2score = m ** 2
-                mlpdirout = regoutdir + os.sep + 'MLP'
-                os.makedirs(mlpdirout, exist_ok=True)
-                file = mlpdirout + os.sep + prefix + '_' + fcstPeriod + '_mlpsummary.txt'
-                f = open(file, 'w')
-                f.write('MLPRegressor Parameters ---\n')
-                f.write('architecture=' + str(nbasins) + ',' + r + ',' + s + ',1\n')
-                f.write('r-square: ' + str(r2score) + ', p-value:' + str(n) + '\n')
-                f.write('processing time: ' + str(time.time() - start_time) + ' seconds\n\n')
-                f.write(json.dumps(regm.get_params(), indent=4, sort_keys=True))
-                f.write('\n\n')
-                f.write('Ranking of number of neurons per hidden layer (HL) ---\n')
-                f.write('("HL1_HL2", (r2score, std))\n')
-                for ele in combs[:20]:
-                    f.write(str(ele) + '\n')
-                f.close()
-                csv = mlpdirout + os.sep + prefix + '_' + fcstPeriod + '_forecast_matrix.csv'
-                mlp_fcstdf.reset_index()
-                mlp_fcstdf.to_csv(csv, index=True)
-                #
-                q1, q2, q3, pmean, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
-                    run_model_skill(mlp_fcstdf, fcstPeriod, 'MLPfcst', r2score, training_actual)
-                csv = mlpdirout + os.sep + prefix + '_score-contingency-table.csv'
-                cgtable_df.to_csv(csv, index=False)
-                csv = mlpdirout + os.sep + prefix + '_score-statistics.csv'
-                skill_df.to_csv(csv, index=False)
-                a_series = pd.Series([predictorName, algorithm, station, lat, lon, q1, q2, q3, pmean, famnt,
-                                      fclass, r2score, HS, Prob], index=forecastdf.columns)
-                forecastdf = forecastdf.append(a_series, ignore_index=True)
-                mlp_fcstdf.rename(columns={'MLPfcst': predictorName +'_MLP'}, inplace=True)
-                stationYF_dfs.append(mlp_fcstdf)
+                if (r is not None) and (s is not None):
+                    if int(s) == 0:
+                        hiddenlayerSize = (int(r),)
+                    else:
+                        hiddenlayerSize = (int(r), int(s),)
+                    regm = MLPRegressor(hidden_layer_sizes=hiddenlayerSize,
+                                        activation=activation_fn, solver=solver_fn, random_state=42, max_iter=700)
+                    regm.fit(X_train[notnull], np.asarray(training_actual)[notnull])
+                    mlp_fcstdf = pd.DataFrame(columns=['Year', fcstPeriod, 'MLPfcst'])
+                    mlp_fcstdf['Year'] = testing_years
+                    mlp_fcstdf[fcstPeriod] = test_actual
+                    mlp_fcstdf.set_index('Year', inplace=True)
+                    for yr in range(len(testing_years)):
+                        year = testing_years[yr]
+                        mlp_fcstdf.loc[year, 'MLPfcst'] = regm.predict(X_test[yr].reshape(1, -1))[0]
+                    warnings.filterwarnings('error')
+                    m, n = pearsonr(np.array(mlp_fcstdf['MLPfcst'])[test_notnull], list(np.ravel(test_actual[test_notnull])))
+                    r2score = m ** 2
+                    mlpdirout = regoutdir + os.sep + 'MLP'
+                    os.makedirs(mlpdirout, exist_ok=True)
+                    file = mlpdirout + os.sep + prefix + '_' + fcstPeriod + '_mlpsummary.txt'
+                    f = open(file, 'w')
+                    f.write('MLPRegressor Parameters ---\n')
+                    f.write('architecture=' + str(nbasins) + ',' + r + ',' + s + ',1\n')
+                    f.write('r-square: ' + str(r2score) + ', p-value:' + str(n) + '\n')
+                    f.write('processing time: ' + str(time.time() - start_time) + ' seconds\n\n')
+                    f.write(json.dumps(regm.get_params(), indent=4, sort_keys=True))
+                    f.write('\n\n')
+                    f.write('Ranking of number of neurons per hidden layer (HL) ---\n')
+                    f.write('("HL1_HL2", (r2score, std))\n')
+                    for ele in combs[:20]:
+                        f.write(str(ele) + '\n')
+                    f.close()
+                    csv = mlpdirout + os.sep + prefix + '_' + fcstPeriod + '_forecast_matrix.csv'
+                    mlp_fcstdf.reset_index()
+                    mlp_fcstdf.to_csv(csv, index=True)
+                    #
+                    q1, q2, q3, pmean, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
+                        run_model_skill(mlp_fcstdf, fcstPeriod, 'MLPfcst', r2score, training_actual)
+                    csv = mlpdirout + os.sep + prefix + '_score-contingency-table.csv'
+                    cgtable_df.to_csv(csv, index=False)
+                    csv = mlpdirout + os.sep + prefix + '_score-statistics.csv'
+                    skill_df.to_csv(csv, index=False)
+                    a_series = pd.Series([predictorName, algorithm, station, lat, lon, q1, q2, q3, pmean, famnt,
+                                          fclass, r2score, HS, Prob], index=forecastdf.columns)
+                    forecastdf = forecastdf.append(a_series, ignore_index=True)
+                    mlp_fcstdf.rename(columns={'MLPfcst': predictorName +'_MLP'}, inplace=True)
+                    stationYF_dfs.append(mlp_fcstdf)
 
             if algorithm == 'LR':
                 print('linear regression...')
@@ -1190,4 +833,5 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         graphpng = fcstoutdir + os.sep + 'forecast_graphs_' + station + '.png'
         plot_Station_forecast(stationYF_df, fcstPeriod, graphpng, station, q1, q2, q3)
     # return station forecast
-    return forecastdf
+    if isinstance(forecastdf, pd.DataFrame):
+        return forecastdf

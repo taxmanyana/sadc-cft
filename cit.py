@@ -1,23 +1,23 @@
 # SADC Climate Services Centre
 # SARCIS-DR Project
-# Programming: Thembani Moitlhobogi
+# Programmer: Thembani Moitlhobogi
 # Theory and Formulas: Sunshine Gamedze, Dr Arlindo Meque, Climate Experts from SADC NHMSs
-# July 2020
+# 10 August 2020
 #
-import os, sys, re, time
+import os, sys, time, threading
 from dateutil.relativedelta import relativedelta
-from datetime import date, datetime
+from datetime import datetime
 from netCDF4 import Dataset
 import pandas as pd
 import numpy as np
 import geojson, json
-import threading
 from multiprocessing import Pool, cpu_count
 from functools import partial
 from functions import *
 
 from PyQt5 import QtCore, QtGui, QtWidgets, uic
 from PyQt5.QtCore import QThread, QObject, QDate, QTime, QDateTime, Qt
+pwd = os.path.dirname(os.path.realpath('__file__'))
 qtCreatorFile = "CIT.ui"
 
 # Global Variables
@@ -33,34 +33,6 @@ predictantdict['data'] = None
 fcstPeriod = None
 cpus = int(round(0.9 * cpu_count() - 0.5, 0))
 
-if os.path.isfile(settingsfile):
-    with open(settingsfile, "r") as read_file:
-        config = json.load(read_file)
-else:
-    config = {}
-    config['outDir'] = ''
-    config['predictorList'] = []
-    config['predictantList'] = []
-    config['predictantMissingValue'] = -9999
-    config['fcstPeriodType'] = 0
-    config['fcstPeriodIndex'] = 9
-    config['trainStartYear'] = 1971
-    config['trainEndYear'] = 2000
-    config['predictorMonthIndex'] = 5
-    config['enableLR'] = True
-    config['PValue'] = 0.05
-    config['selectMode'] = 1
-    config['stepwisePvalue'] = 0.3
-    config['neurons'] = "25,25"
-    config['inputFormat'] = "CSV"
-    config['includeScore'] = False
-    config['composition'] = "Cumulation"
-    config['zonevector'] = {"file": None, "ID": 0, "attr": []}
-    #config['zoneID'] = None
-    config['fcstyear'] = fcstyear
-    config['algorithms'] = []
-    config['basinbounds'] = {"minlat": -90, "maxlat": 90, "minlon": -180, "maxlon": 180}
-
 #
 def concat_csvs(csvs, missing):
     dfs_files = []
@@ -69,6 +41,7 @@ def concat_csvs(csvs, missing):
     dfs_files = pd.concat((dfs_files), axis=0)
     dfs_files = dfs_files.replace(missing, np.nan)
     dfs_files = dfs_files.dropna(how='all')
+    dfs_files['ID'] = dfs_files['ID'].apply(rename)
     return dfs_files
 
 def get_parameter(list):
@@ -96,6 +69,44 @@ if __name__ == "__main__":
     window = MyApp()
     window.show()
 
+    try:
+        with open(settingsfile, "r") as read_file:
+            config = json.load(read_file)
+    except:
+        config = {}
+        config['outDir'] = ''
+        config['predictorList'] = []
+        config['predictantList'] = []
+        config['predictantMissingValue'] = -9999
+        config['fcstPeriodType'] = 0
+        config['fcstPeriodIndex'] = 9
+        config['trainStartYear'] = 1971
+        config['trainEndYear'] = 2000
+        config['predictorMonthIndex'] = 5
+        config['enableLR'] = True
+        config['PValue'] = 0.05
+        config['selectMode'] = 1
+        config['stepwisePvalue'] = 0.3
+        config['inputFormat'] = "CSV"
+        config['composition'] = "Cumulation"
+        config['zonevector'] = {"file": "", "ID": 0, "attr": []}
+        config['fcstyear'] = fcstyear
+        config['algorithms'] = []
+        config['basinbounds'] = {"minlat": -90, "maxlat": 90, "minlon": -180, "maxlon": 366}
+        config['plots'] = {'basemap': 'data\sadc_countries.geojson', 'zonepoints': 0}
+        config['colors'] = {'class0': '#ffffff', 'class1': '#d2b48c', 'class2': '#fbff03', 'class3': '#0bfffb',
+                            'class4': '#1601fc'}
+        window.progresslabel.setText("Default settings loaded.")
+
+    # def print_est_time():
+    #     global config
+    #     global cpus
+    #     npredictors = len(config['predictorList'])
+    #     nstations = len(predictantdict['stations'])
+    #     ncpus = cpus
+    #     window.progresslabel.setText(
+    #         "Format error in " + os.path.basename(filename) + ", check if comma delimited")
+
     def getOutDir():
         global config
         config['outDir'] = QtWidgets.QFileDialog.getExistingDirectory()
@@ -112,6 +123,8 @@ if __name__ == "__main__":
     def removePredictors():
         global config
         newList = []
+        if len(window.predictorlistWidget.selectedItems()) == 0:
+            return
         for yy in config.get('predictorList'):
             if os.path.basename(yy) != window.predictorlistWidget.selectedItems()[0].text():
                 newList.append(yy)
@@ -209,13 +222,6 @@ if __name__ == "__main__":
         else:
             config['inputFormat'] = "NetCDF"
 
-    def setInclude():
-        global config
-        if window.inclscorecheckBox.isChecked():
-            config['includeScore'] = True
-        else:
-            config['includeScore'] = False
-
     for xx in range(len(months)):
         window.predictMonthComboBox.addItem(months[xx])
 
@@ -230,15 +236,17 @@ if __name__ == "__main__":
         global predictantdict
         global fcstPeriod
         global cpus
+        global pwd
         window.progresslabel.setText('preparing inputs')
+        start_time = time.time()
         config['algorithms'] = []
         if window.LRcheckBox.isChecked():
             config['algorithms'].append('LR')
-        # if window.NNcheckBox.isChecked():
-        if window.LSTMcheckBox.isChecked(): config['algorithms'].append('LSTM')
         if window.MLPcheckBox.isChecked(): config['algorithms'].append('MLP')
-        if window.CNNcheckBox.isChecked(): config['algorithms'].append('CNN')
-        config['neurons'] = window.neuronslineEdit.text()
+
+        if len(config.get('algorithms')) == 0:
+            window.progresslabel.setText("No algorithm set!")
+            return
 
         if window.cumRadio.isChecked():
             config['composition'] = "Cumulation"
@@ -256,10 +264,10 @@ if __name__ == "__main__":
         config['PValue'] = float(window.pvaluelineEdit.text())
         config['fcstyear'] = int(window.fcstyearlineEdit.text())
         config['zonevector']['ID'] = window.zoneIDcomboBox.currentIndex()
-        config['basinbounds']['minlat'] = window.minlatLineEdit.text()
-        config['basinbounds']['maxlat'] = window.maxlatLineEdit.text()
-        config['basinbounds']['minlon'] = window.minlonLineEdit.text()
-        config['basinbounds']['maxlon'] = window.maxlonLineEdit.text()
+        config['basinbounds']['minlat'] = float(str(window.minlatLineEdit.text()).strip() or -90)
+        config['basinbounds']['maxlat'] = float(str(window.maxlatLineEdit.text()).strip() or 90)
+        config['basinbounds']['minlon'] = float(str(window.minlonLineEdit.text()).strip() or -180)
+        config['basinbounds']['maxlon'] = float(str(window.maxlonLineEdit.text()).strip() or 366)
         config['trainStartYear'] = int(window.startyearLineEdit.text())
         config['trainEndYear'] = int(window.endyearLineEdit.text())
 
@@ -267,8 +275,6 @@ if __name__ == "__main__":
         if not os.path.exists(config.get('outDir')):
             window.progresslabel.setText("Output Directory not set!")
             return
-
-        processes = len(config.get('predictorList')) * len(config.get('algorithms'))
 
         # Write configuration to settings file
         import json
@@ -299,8 +305,6 @@ if __name__ == "__main__":
         predictorStartYr = int(config.get('trainStartYear'))
         predictorMonth = str(window.predictMonthComboBox.currentText())
         fcstPeriod = str(window.periodComboBox.currentText())
-
-        # cproc = 0
 
         for predictor in config.get('predictorList'):
             if os.path.isfile(predictor):
@@ -371,7 +375,6 @@ if __name__ == "__main__":
                 status = 'predictor data to be used: ' + str(predictorStartYr) + predictorMonth + ' to ' + \
                          str(predictorEndYr) + predictorMonth
                 window.progresslabel.setText(status)
-                # yearspredictor = [yr for yr in range(predictorStartYr, predictorEndYr+1)]
                 nsst_years = predictorEndYr - predictorStartYr + 1
                 sst_arr = np.zeros((nsst_years, rows, cols)) * np.nan
                 x = -1
@@ -414,128 +417,97 @@ if __name__ == "__main__":
             window.progresslabel.setText(status)
             # print("processing ", completed, " of ", len(stations))
             time.sleep(0.2)
-        forecastsdf = pd.concat(list(rs), ignore_index=True)
-
-        # Write forecasts to output directory
-        window.progresslabel.setText('Writing Forecast...')
-        print('Writing Forecast...')
-        forecastdir = outdir + os.sep + "Forecast"
-        os.makedirs(forecastdir, exist_ok=True)
-        fcstprefix = str(config.get('fcstyear')) + fcstPeriod + '_' + predictordict[predictorName]['predictorMonth']
-        # write forecast by station or zone
-        if config.get('zonevector', {}).get('file') is None:
-            write_forecast(fcstprefix, forecastsdf, forecastdir)
-            # highskilldf = forecastsdf[forecastsdf.HS.ge(50)][['ID', 'Lat', 'Lon', 'HS', 'class']]
-            # r, _ = highskilldf.shape
-            # if r > 0:
-            #     stationclass = highskilldf.groupby('ID', 'Lat', 'Lon').apply(func=weighted_average).to_frame(name='WA')
-            #     stationclass[['wavg', 'n4', 'n3', 'n2', 'n1']] = pd.DataFrame(stationclass.WA.tolist(), index=stationclass.index)
-            #     stationclass = stationclass.drop(['WA'], axis=1)
-            #     stationclass['class'] = round(stationclass['wavg']).astype(int)
-            #     print(stationclass.head(100))
-            #     # write_station_forecast(zonefcstprefix, stationclass, zonejson, ZoneID)
-            #     window.progresslabel.setText('Done.')
-            #     print('Done.')
-            # else:
-            #     window.progresslabel.setText('Skill not enough for station forecast')
-            #     print('Skill not enough for station forecast')
+        outs = list(rs)
+        outputs = []
+        for out in outs:
+            if isinstance(out, pd.DataFrame):
+                if out.shape[0] > 0:
+                    outputs.append(out)
+        if len(outputs) == 0:
+            window.progresslabel.setText('Skill not enough to produce forecast')
+            print('Skill not enough to produce forecast')
         else:
-            if not os.path.isfile(config.get('zonevector', {}).get('file')):
-                window.progresslabel.setText('Error: Zone vector does not exist, will not write forecast')
-                print('Error: Zone vector does not exist, will not write forecast')
-            else:
-                with open(config.get('zonevector', {}).get('file')) as f:
-                        zonejson = geojson.load(f)
-                zoneattrID = config.get('zonevector',{}).get('ID')
-                zoneattr = config.get('zonevector', {}).get('attr')[zoneattrID]
-                # zones = zonelist(zonejson, zoneattr)
-                forecastsdf["Zone"] = np.nan
-                # --------------
-                for n in range(nstations):
-                    station = predictantdict['stations'][n]
-                    szone = whichzone(zonejson, predictantdict['lats'][n], predictantdict['lons'][n], zoneattr)
-                    forecastsdf.loc[forecastsdf.ID == station, 'Zone'] = szone
-                fcstcsvout = forecastdir + os.sep + fcstprefix + '_zone_station_forecast.csv'
+            # Write forecasts to output directory
+            forecastsdf = pd.concat(outputs, ignore_index=True)
+            window.progresslabel.setText('Writing Forecast...')
+            print('Writing Forecast...')
+            forecastdir = outdir + os.sep + "Forecast"
+            os.makedirs(forecastdir, exist_ok=True)
+            fcstprefix = str(config.get('fcstyear')) + fcstPeriod + '_' + predictordict[predictorName]['predictorMonth']
+            colors = config.get('colors', {})
+            fcstName = str(config.get('fcstyear')) + fcstPeriod
+            # write forecast by station or zone
+            if len(config.get('zonevector', {}).get('file')) == 0:
+                fcstcsvout = forecastdir + os.sep + fcstprefix + '_forecast.csv'
                 forecastsdf.to_csv(fcstcsvout, header=True, index=True)
-                # generate zone forecast
-                zonefcstprefix = forecastdir + os.sep + str(config.get('fcstyear')) + fcstPeriod + '_' + \
-                                 predictordict[predictorName]['predictorMonth']
-                highskilldf = forecastsdf[forecastsdf.HS.ge(50)][['HS', 'class', 'Zone']]
+                highskilldf = forecastsdf[forecastsdf.HS.ge(50)][['ID', 'Lat', 'Lon', 'HS', 'class']]
                 r, _ = highskilldf.shape
                 if r > 0:
-                    zoneclass = highskilldf.groupby('Zone').apply(func=weighted_average).to_frame(name='WA')
-                    zoneclass[['wavg', 'n4', 'n3', 'n2', 'n1']] = pd.DataFrame(zoneclass.WA.tolist(), index=zoneclass.index)
-                    zoneclass = zoneclass.drop(['WA'], axis=1)
-                    zoneclass['class'] = round(zoneclass['wavg']).astype(int)
-                    ZoneID = config['zonevector']['attr'][config['zonevector']['ID']]
-                    write_zone_forecast(zonefcstprefix, zoneclass, zonejson, ZoneID)
-                    window.progresslabel.setText('Done.')
-                    print('Done.')
+                    stationclass = highskilldf.groupby(['ID', 'Lat', 'Lon']).apply(func=weighted_average).to_frame(name='WA')
+                    stationclass[['wavg', 'class4', 'class3', 'class2', 'class1']] = pd.DataFrame(stationclass.WA.tolist(), index=stationclass.index)
+                    stationclass = stationclass.drop(['WA'], axis=1)
+                    stationclass['class'] = round(stationclass['wavg']).astype(int)
+                    stationclassout = forecastdir + os.sep + fcstprefix + '_station-forecast.csv'
+                    stationclass.to_csv(stationclassout, header=True, index=True)
+                    fcstjsonout = forecastdir + os.sep + fcstprefix + '_station-forecast.geojson'
+                    stationclass = stationclass.reset_index()
+                    data2geojson(stationclass, fcstjsonout)
+                    base_map = None
+                    base_mapfile = config.get('plots', {}).get('basemap', '')
+                    if not os.path.isfile(base_mapfile):
+                        base_mapfile = repr(config.get('plots', {}).get('basemap'))
+                    if os.path.isfile(base_mapfile):
+                        with open(base_mapfile, "r") as read_file:
+                            base_map = geojson.load(read_file)
+                    station_forecast_png(fcstprefix, stationclass, base_map, colors, forecastdir, fcstName)
+                    window.progresslabel.setText('Done in '+str(convert(time.time()-start_time)))
+                    print('Done in '+str(convert(time.time()-start_time)))
                 else:
-                    window.progresslabel.setText('Skill not enough for zone forecast')
-                    print('Skill not enough for zone forecast')
-
-        #         for algorithm in config.get('algorithms'):
-        #             cproc = cproc + 1
-        #             outpath = config.get('outDir') + os.sep + 'Forecast_' + str(config.get('fcstyear')) + '_' + fcstPeriod + os.sep + algorithm
-        #             cstatus = '['+str(cproc)+'/'+str(processes)+'] '
-        #             if algorithm == 'LR':
-        #                 if config.get('inputFormat') == 'CSV':
-        #                     # if a zone file has been defined...
-        #                     if config.get('zonevector',{}).get('file') is not None:
-        #                         if os.path.isfile(config.get('zonevector',{}).get('file')):
-        #                             with open(config.get('zonevector',{}).get('file')) as f:
-        #                                 zonejson = geojson.load(f)
-        #                             zoneattrID = config.get('zonevector',{}).get('ID')
-        #                             zoneattr = config.get('zonevector', {}).get('attr')[zoneattrID]
-        #                             zones = zonelist(zonejson, zoneattr)
-        #                             zonestation = {}
-        #                             fcstzone = {}
-        #                             # --------------
-        #                             for n in range(nstations):
-        #                                 station_data_all = input_data.loc[input_data['ID'] == stations[n]]
-        #                                 y = station_data_all['Lat'].unique()[0]
-        #                                 z = station_data_all['Lon'].unique()[0]
-        #                                 szone = whichzone(zonejson, y, z, zoneattr)
-        #                                 try:
-        #                                     zonestation[szone].append(stations[n])
-        #                                 except KeyError:
-        #                                     zonestation[szone] = [stations[n]]
-        #                             window.progresslabel.setText(cstatus + "Calculating forecast for each zone...")
-        #                             nzones = len(zones)
-        #                             czone = 0
-        #                             for zone in zones:
-        #                                 czone = czone + 1
-        #                                 window.progresslabel.setText(cstatus + 'processing zone ' + str(czone) +
-        #                                            ' of ' + str(nzones) + ' (' + str(zone) + ')')
-        #                                 print('\nprocessing zone ' + str(czone) +
-        #                                            ' of ' + str(nzones) + ' (' + str(zone) + ')')
-        #                                 if zone not in zonestation: continue
-        #                                 fcstzone[zone] = \
-        #                                     forecast_zone(predictor=predictor,
-        #                                                   param=param, predictorMonth=predictorMonth,
-        #                                                   fcstPeriodType=config['fcstPeriodType'],
-        #                                                   zone=zone, zonestation=zonestation, station_data_all=input_data,
-        #                                                   sst_arr=sst_arr, lats=lats, lons=lons,
-        #                                                   trainStartYear=config['trainStartYear'],
-        #                                                   trainEndYear=config['trainEndYear'],
-        #                                                   predictorStartYr=predictorStartYr,
-        #                                                   fcstYear=config['fcstyear'], fcstPeriod=fcstPeriod,
-        #                                                   PValue=config['PValue'],
-        #                                                   composition=config.get('composition'), selectMode=config.get('selectMode'),
-        #                                                   includeScore=config.get('includeScore'), stepwisePvalue=config.get('stepwisePvalue'),
-        #                                                   outDir=outpath)
-        #
-        #                             window.progresslabel.setText('Finalizing: writing zone forecast')
-        #                             print('Finalizing: writing zone forecast')
-        #                             prefix = predictorName + '_' + param + '_' + predictorMonth
-        #                             write_zone_forecast(prefix, zonejson, zoneattr, fcstzone, zones, outpath)
-        #                             window.progresslabel.setText(cstatus + algorithm + ' complete')
-        #                             print(algorithm + ' complete')
-        #
-        #                     # if no zone file has been defined...
-        #
-
+                    window.progresslabel.setText('Skill not enough for station forecast')
+                    print('Skill not enough for station forecast')
+            else:
+                if not os.path.isfile(config.get('zonevector', {}).get('file')):
+                    window.progresslabel.setText('Error: Zone vector does not exist, will not write zone forecast')
+                    print('Error: Zone vector does not exist, will not write zone forecast')
+                else:
+                    with open(config.get('zonevector', {}).get('file')) as f:
+                            zonejson = geojson.load(f)
+                    zoneattrID = config.get('zonevector',{}).get('ID')
+                    zoneattr = config.get('zonevector', {}).get('attr')[zoneattrID]
+                    forecastsdf["Zone"] = np.nan
+                    # --------------
+                    for n in range(nstations):
+                        station = predictantdict['stations'][n]
+                        szone = whichzone(zonejson, predictantdict['lats'][n], predictantdict['lons'][n], zoneattr)
+                        forecastsdf.loc[forecastsdf.ID == station, 'Zone'] = szone
+                    fcstcsvout = forecastdir + os.sep + fcstprefix + '_zone_station_forecast.csv'
+                    forecastsdf.to_csv(fcstcsvout, header=True, index=True)
+                    # generate zone forecast
+                    zonefcstprefix = forecastdir + os.sep + str(config.get('fcstyear')) + fcstPeriod + '_' + \
+                                     predictordict[predictorName]['predictorMonth']
+                    highskilldf = forecastsdf[forecastsdf.HS.ge(50)][['HS', 'class', 'Zone']]
+                    r, _ = highskilldf.shape
+                    if r > 0:
+                        stationsdf = forecastsdf[forecastsdf.HS.ge(50)][['ID', 'Lat', 'Lon', 'HS', 'class']]
+                        stationclass = stationsdf.groupby(['ID', 'Lat', 'Lon']).apply(func=weighted_average).to_frame(
+                            name='WA')
+                        stationclass[['wavg', 'class4', 'class3', 'class2', 'class1']] = pd.DataFrame(
+                            stationclass.WA.tolist(), index=stationclass.index)
+                        stationclass = stationclass.drop(['WA'], axis=1)
+                        stationclass['class'] = round(stationclass['wavg']).astype(int)
+                        zoneclass = highskilldf.groupby('Zone').apply(func=weighted_average).to_frame(name='WA')
+                        zoneclass[['wavg', 'class4', 'class3', 'class2', 'class1']] = pd.DataFrame(zoneclass.WA.tolist(), index=zoneclass.index)
+                        zoneclass = zoneclass.drop(['WA'], axis=1)
+                        zoneclass['class'] = round(zoneclass['wavg']).astype(int)
+                        ZoneID = config['zonevector']['attr'][config['zonevector']['ID']]
+                        zonepoints = config.get('plots', {}).get('zonepoints', '0')
+                        write_zone_forecast(zonefcstprefix, zoneclass, zonejson, ZoneID, colors, stationclass, zonepoints,
+                                            fcstName)
+                        window.progresslabel.setText('Done in '+str(convert(time.time()-start_time)))
+                        print('Done in '+str(convert(time.time()-start_time)))
+                    else:
+                        window.progresslabel.setText('Skill not enough for zone forecast')
+                        print('Skill not enough for zone forecast')
 
 
     # Set default values
@@ -543,12 +515,9 @@ if __name__ == "__main__":
     window.startyearLineEdit.setText(str(config.get('trainStartYear')))
     window.endyearLineEdit.setText(str(config.get('trainEndYear')))
     window.predictMonthComboBox.setCurrentIndex(int(config.get('predictorMonthIndex',0)))
-    window.inclscorecheckBox.setChecked(config.get('includeScore'))
     window.LRcheckBox.setChecked(config.get('enableLR'))
     window.pvaluelineEdit.setText(str(config.get('PValue')))
     window.swpvaluelineEdit.setText(str(config.get('stepwisePvalue')))
-    window.neuronslineEdit.setText(str(config.get('neurons')))
-    window.groupBox_5.setEnabled(True)
     window.missingvalueslineEdit.setText(str(config.get('predictantMissingValue')))
     window.outdirlabel.setText(config.get('outDir'))
     window.fcstyearlineEdit.setText(str(config.get('fcstyear')))
@@ -571,9 +540,7 @@ if __name__ == "__main__":
     if config.get('composition') == "Average":
         window.avgRadio.setChecked(True)
     if 'LR' in config.get('algorithms'): window.LRcheckBox.setChecked(True)
-    if 'LSTM' in config.get('algorithms'): window.LSTMcheckBox.setChecked(True)
     if 'MLP' in config.get('algorithms'): window.MLPcheckBox.setChecked(True)
-    if 'CNN' in config.get('algorithms'): window.CNNcheckBox.setChecked(True)
     window.minlatLineEdit.setText(str(config.get("basinbounds",{}).get('minlat')))
     window.maxlatLineEdit.setText(str(config.get("basinbounds",{}).get('maxlat')))
     window.minlonLineEdit.setText(str(config.get("basinbounds",{}).get('minlon')))
@@ -591,7 +558,6 @@ if __name__ == "__main__":
     window.browsepredictantButton.clicked.connect(addPredictants)
     window.clearpredictantButton.clicked.connect(clearPredictants)
     window.CSVRadio.toggled.connect(setInputFormat)
-    window.inclscorecheckBox.toggled.connect(setInclude)
     window.ZoneButton.clicked.connect(addZoneVector)
     window.runButton.clicked.connect(launch_forecast_Thread)
     window.stopButton.clicked.connect(closeapp)
