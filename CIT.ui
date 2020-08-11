@@ -23,11 +23,11 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>SADC Climate Forecasting Tool v1.3.0</string>
+   <string>SADC Climate Forecasting Tool v1.3.1</string>
   </property>
   <property name="windowIcon">
    <iconset>
-    <normaloff>../cit/sadc.ico</normaloff>../cit/sadc.ico</iconset>
+    <normaloff>sadc.ico</normaloff>sadc.ico</iconset>
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QGroupBox" name="groupBox_2">

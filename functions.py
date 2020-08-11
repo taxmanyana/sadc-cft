@@ -238,13 +238,14 @@ def station_forecast_png(prefix, stationclass, base_map, colors, outdir, fcstNam
         midx = stationclass.iloc[x]['Lon']
         midy = stationclass.iloc[x]['Lat']
         plt.plot(midx, midy, color=color, marker='o', markersize=8)
-        plt.text(midx, midy, name, fontsize=6)
+        plt.text(midx, midy, name, fontsize=4)
 
     plt.title(fcstName + ' Forecast', fontsize=12)
     plt.xlabel('Longitude', fontsize=10)
     plt.ylabel('Latitude', fontsize=10)
     ax.axis('scaled')
     plt.savefig(outdir + os.sep + prefix + '_station-forecast.png', bbox_inches = 'tight')
+    plt.close(fig)
 
 def write_zone_forecast(zonefcstprefix, fcstzone_df, forecastjson, ZoneID, colors, stationclass, zonepoints, fcstName):
     ids = list(fcstzone_df.reset_index()['Zone'])
@@ -293,6 +294,7 @@ def write_zone_forecast(zonefcstprefix, fcstzone_df, forecastjson, ZoneID, color
     plt.xlabel('Longitude', fontsize=10)
     plt.ylabel('Latitude', fontsize=10)
     plt.savefig(zonefcstprefix + '_zone-forecast.png', bbox_inches = 'tight')
+    plt.close(fig)	
 
 def weighted_average(group):
    HS = group['HS']
@@ -392,7 +394,7 @@ def plot_Station_forecast(forecast_df, fcstPeriod, graphpng, station, q1, q2, q3
     q3s = [q3] * len(forecast_df['Year'])
     maxvals = [maxval + (0.05 * maxval)] * len(forecast_df['Year'])
     minvals = [minval - abs(0.05 * minval)] * len(forecast_df['Year'])
-    plt.figure(figsize=(W/float(DPI), H/float(DPI)), frameon=True, dpi=DPI)
+    fig = plt.figure(figsize=(W/float(DPI), H/float(DPI)), frameon=True, dpi=DPI)
     plt.fill_between(forecast_df['Year'], minvals, q1s, color='#ffe7d1')
     plt.fill_between(forecast_df['Year'], q1s, q3s, color='#e8f9e9')
     plt.fill_between(forecast_df['Year'], q3s, maxvals, color='#f4f6ff')
@@ -409,6 +411,7 @@ def plot_Station_forecast(forecast_df, fcstPeriod, graphpng, station, q1, q2, q3
     plt.xlabel('Year', fontsize=12)
     plt.ylabel('Forecast', fontsize=12)
     plt.savefig(graphpng, bbox_inches = 'tight')
+    plt.close(fig)
 
 
 def writeout(prefix, r_matrix, p_matrix, corgrp_matrix, corr_df, lats, lons, outdir):

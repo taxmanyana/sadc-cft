@@ -45,4 +45,10 @@ Feature: Add basin extent (maxlat, maxlon, minlat, minlon) boxes
 Feature: Keep previous run settings and load as default for next run
 Bugfix: Minor enhancements and bug fixes
 
-
+v1.3.1 - 11 August 2020
+Bugfix: Fix numpy value error which pops up during installation
+Bugfix: Fix 'plots not closed' error
+Update: Default "zonepoint" value schanged to 1
+Update: Add CHIRPS data and SADC country boundaries geojson
+Feature: Add 'debug.bat' for terminal output screen 
+ 

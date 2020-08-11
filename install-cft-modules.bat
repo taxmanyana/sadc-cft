@@ -31,6 +31,12 @@ echo QGIS installation to be used: %QGIS%
 echo.
 echo installing the python modules...
 echo.
+echo upgrading numpy...
+python -m pip install --upgrade numpy
+if %errorlevel% equ 0 (
+ echo numpy upgraded successfully
+)
+echo.
 echo upgrading pip...
 python -m pip install --upgrade pip
 if %errorlevel% equ 0 (

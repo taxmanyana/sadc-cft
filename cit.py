@@ -93,7 +93,7 @@ if __name__ == "__main__":
         config['fcstyear'] = fcstyear
         config['algorithms'] = []
         config['basinbounds'] = {"minlat": -90, "maxlat": 90, "minlon": -180, "maxlon": 366}
-        config['plots'] = {'basemap': 'data\sadc_countries.geojson', 'zonepoints': 0}
+        config['plots'] = {'basemap': 'data\sadc_countries.geojson', 'zonepoints': 1}
         config['colors'] = {'class0': '#ffffff', 'class1': '#d2b48c', 'class2': '#fbff03', 'class3': '#0bfffb',
                             'class4': '#1601fc'}
         window.progresslabel.setText("Default settings loaded.")
