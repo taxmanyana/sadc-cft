@@ -1,20 +1,20 @@
 <!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
-<qgis styleCategories="AllStyleCategories" simplifyDrawingHints="0" maxScale="0" minScale="1e+08" hasScaleBasedVisibilityFlag="0" labelsEnabled="0" simplifyAlgorithm="0" simplifyDrawingTol="1" simplifyMaxScale="1" readOnly="0" version="3.6.0-Noosa" simplifyLocal="1">
+<qgis simplifyDrawingTol="1" styleCategories="AllStyleCategories" maxScale="0" simplifyDrawingHints="0" simplifyMaxScale="1" readOnly="0" version="3.6.0-Noosa" minScale="1e+08" simplifyAlgorithm="0" simplifyLocal="1" hasScaleBasedVisibilityFlag="0" labelsEnabled="0">
   <flags>
     <Identifiable>1</Identifiable>
     <Removable>1</Removable>
     <Searchable>1</Searchable>
   </flags>
-  <renderer-v2 attr="fcst_class" forceraster="0" symbollevels="0" type="categorizedSymbol" enableorderby="0">
+  <renderer-v2 forceraster="0" symbollevels="0" enableorderby="0" type="categorizedSymbol" attr="fcst_class">
     <categories>
-      <category symbol="0" render="true" label="Below-Normal (1)" value="1"/>
-      <category symbol="1" render="true" label="Normal-Below (2)" value="2"/>
-      <category symbol="2" render="true" label="Normal-Above (3)" value="3"/>
-      <category symbol="3" render="true" label="Above-Normal (4)" value="4"/>
+      <category render="true" symbol="0" value="1" label="Below-Normal (1)"/>
+      <category render="true" symbol="1" value="2" label="Normal-Below (2)"/>
+      <category render="true" symbol="2" value="3" label="Normal-Above (3)"/>
+      <category render="true" symbol="3" value="4" label="Above-Normal (4)"/>
     </categories>
     <symbols>
-      <symbol force_rhr="0" name="0" clip_to_extent="1" type="marker" alpha="1">
-        <layer class="SimpleMarker" locked="0" enabled="1" pass="0">
+      <symbol clip_to_extent="1" type="marker" force_rhr="0" name="0" alpha="1">
+        <layer pass="0" enabled="1" class="SimpleMarker" locked="0">
           <prop k="angle" v="0"/>
           <prop k="color" v="210,180,140,255"/>
           <prop k="horizontal_anchor_point" v="1"/>
@@ -35,15 +35,15 @@
           <prop k="vertical_anchor_point" v="1"/>
           <data_defined_properties>
             <Option type="Map">
-              <Option name="name" type="QString" value=""/>
+              <Option type="QString" value="" name="name"/>
               <Option name="properties"/>
-              <Option name="type" type="QString" value="collection"/>
+              <Option type="QString" value="collection" name="type"/>
             </Option>
           </data_defined_properties>
         </layer>
       </symbol>
-      <symbol force_rhr="0" name="1" clip_to_extent="1" type="marker" alpha="1">
-        <layer class="SimpleMarker" locked="0" enabled="1" pass="0">
+      <symbol clip_to_extent="1" type="marker" force_rhr="0" name="1" alpha="1">
+        <layer pass="0" enabled="1" class="SimpleMarker" locked="0">
           <prop k="angle" v="0"/>
           <prop k="color" v="251,255,3,255"/>
           <prop k="horizontal_anchor_point" v="1"/>
@@ -64,15 +64,15 @@
           <prop k="vertical_anchor_point" v="1"/>
           <data_defined_properties>
             <Option type="Map">
-              <Option name="name" type="QString" value=""/>
+              <Option type="QString" value="" name="name"/>
               <Option name="properties"/>
-              <Option name="type" type="QString" value="collection"/>
+              <Option type="QString" value="collection" name="type"/>
             </Option>
           </data_defined_properties>
         </layer>
       </symbol>
-      <symbol force_rhr="0" name="2" clip_to_extent="1" type="marker" alpha="1">
-        <layer class="SimpleMarker" locked="0" enabled="1" pass="0">
+      <symbol clip_to_extent="1" type="marker" force_rhr="0" name="2" alpha="1">
+        <layer pass="0" enabled="1" class="SimpleMarker" locked="0">
           <prop k="angle" v="0"/>
           <prop k="color" v="11,255,251,255"/>
           <prop k="horizontal_anchor_point" v="1"/>
@@ -93,15 +93,15 @@
           <prop k="vertical_anchor_point" v="1"/>
           <data_defined_properties>
             <Option type="Map">
-              <Option name="name" type="QString" value=""/>
+              <Option type="QString" value="" name="name"/>
               <Option name="properties"/>
-              <Option name="type" type="QString" value="collection"/>
+              <Option type="QString" value="collection" name="type"/>
             </Option>
           </data_defined_properties>
         </layer>
       </symbol>
-      <symbol force_rhr="0" name="3" clip_to_extent="1" type="marker" alpha="1">
-        <layer class="SimpleMarker" locked="0" enabled="1" pass="0">
+      <symbol clip_to_extent="1" type="marker" force_rhr="0" name="3" alpha="1">
+        <layer pass="0" enabled="1" class="SimpleMarker" locked="0">
           <prop k="angle" v="0"/>
           <prop k="color" v="22,1,252,255"/>
           <prop k="horizontal_anchor_point" v="1"/>
@@ -122,17 +122,17 @@
           <prop k="vertical_anchor_point" v="1"/>
           <data_defined_properties>
             <Option type="Map">
-              <Option name="name" type="QString" value=""/>
+              <Option type="QString" value="" name="name"/>
               <Option name="properties"/>
-              <Option name="type" type="QString" value="collection"/>
+              <Option type="QString" value="collection" name="type"/>
             </Option>
           </data_defined_properties>
         </layer>
       </symbol>
     </symbols>
     <source-symbol>
-      <symbol force_rhr="0" name="0" clip_to_extent="1" type="marker" alpha="1">
-        <layer class="SimpleMarker" locked="0" enabled="1" pass="0">
+      <symbol clip_to_extent="1" type="marker" force_rhr="0" name="0" alpha="1">
+        <layer pass="0" enabled="1" class="SimpleMarker" locked="0">
           <prop k="angle" v="0"/>
           <prop k="color" v="36,12,140,255"/>
           <prop k="horizontal_anchor_point" v="1"/>
@@ -153,9 +153,9 @@
           <prop k="vertical_anchor_point" v="1"/>
           <data_defined_properties>
             <Option type="Map">
-              <Option name="name" type="QString" value=""/>
+              <Option type="QString" value="" name="name"/>
               <Option name="properties"/>
-              <Option name="type" type="QString" value="collection"/>
+              <Option type="QString" value="collection" name="type"/>
             </Option>
           </data_defined_properties>
         </layer>
@@ -165,24 +165,24 @@
     <sizescale/>
   </renderer-v2>
   <customproperties>
-    <property key="embeddedWidgets/count" value="0"/>
+    <property value="0" key="embeddedWidgets/count"/>
     <property key="variableNames"/>
     <property key="variableValues"/>
   </customproperties>
   <blendMode>0</blendMode>
   <featureBlendMode>0</featureBlendMode>
   <layerOpacity>1</layerOpacity>
-  <SingleCategoryDiagramRenderer attributeLegend="1" diagramType="Histogram">
-    <DiagramCategory width="15" sizeType="MM" enabled="0" diagramOrientation="Up" barWidth="5" opacity="1" labelPlacementMethod="XHeight" height="15" rotationOffset="270" maxScaleDenominator="1e+08" penWidth="0" minScaleDenominator="0" lineSizeType="MM" penColor="#000000" penAlpha="255" scaleBasedVisibility="0" lineSizeScale="3x:0,0,0,0,0,0" sizeScale="3x:0,0,0,0,0,0" minimumSize="0" backgroundColor="#ffffff" scaleDependency="Area" backgroundAlpha="255">
-      <fontProperties style="" description="MS Shell Dlg 2,7.8,-1,5,50,0,0,0,0,0"/>
+  <SingleCategoryDiagramRenderer diagramType="Histogram" attributeLegend="1">
+    <DiagramCategory opacity="1" barWidth="5" penWidth="0" enabled="0" sizeType="MM" rotationOffset="270" labelPlacementMethod="XHeight" backgroundAlpha="255" scaleBasedVisibility="0" lineSizeType="MM" minScaleDenominator="0" diagramOrientation="Up" backgroundColor="#ffffff" penAlpha="255" height="15" sizeScale="3x:0,0,0,0,0,0" lineSizeScale="3x:0,0,0,0,0,0" maxScaleDenominator="1e+08" penColor="#000000" width="15" scaleDependency="Area" minimumSize="0">
+      <fontProperties description="MS Shell Dlg 2,7.8,-1,5,50,0,0,0,0,0" style=""/>
     </DiagramCategory>
   </SingleCategoryDiagramRenderer>
-  <DiagramLayerSettings obstacle="0" showAll="1" dist="0" priority="0" linePlacementFlags="18" zIndex="0" placement="0">
+  <DiagramLayerSettings zIndex="0" showAll="1" obstacle="0" dist="0" linePlacementFlags="18" priority="0" placement="0">
     <properties>
       <Option type="Map">
-        <Option name="name" type="QString" value=""/>
+        <Option type="QString" value="" name="name"/>
         <Option name="properties"/>
-        <Option name="type" type="QString" value="collection"/>
+        <Option type="QString" value="collection" name="type"/>
       </Option>
     </properties>
   </DiagramLayerSettings>
@@ -198,35 +198,35 @@
         </config>
       </editWidget>
     </field>
-    <field name="tercile1">
-      <editWidget type="TextEdit">
+    <field name="class4">
+      <editWidget type="Range">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field name="tercile2">
-      <editWidget type="TextEdit">
+    <field name="class3">
+      <editWidget type="Range">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field name="tercile3">
-      <editWidget type="TextEdit">
+    <field name="class2">
+      <editWidget type="Range">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field name="mean">
-      <editWidget type="TextEdit">
+    <field name="class1">
+      <editWidget type="Range">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field name="fcst_precip">
+    <field name="wavg">
       <editWidget type="TextEdit">
         <config>
           <Option/>
@@ -240,83 +240,59 @@
         </config>
       </editWidget>
     </field>
-    <field name="hitscore">
-      <editWidget type="TextEdit">
-        <config>
-          <Option/>
-        </config>
-      </editWidget>
-    </field>
-    <field name="PB_PN_PA">
-      <editWidget type="TextEdit">
-        <config>
-          <Option/>
-        </config>
-      </editWidget>
-    </field>
   </fieldConfiguration>
   <aliases>
-    <alias index="0" name="" field="ID"/>
-    <alias index="1" name="" field="tercile1"/>
-    <alias index="2" name="" field="tercile2"/>
-    <alias index="3" name="" field="tercile3"/>
-    <alias index="4" name="" field="mean"/>
-    <alias index="5" name="" field="fcst_precip"/>
-    <alias index="6" name="" field="fcst_class"/>
-    <alias index="7" name="" field="hitscore"/>
-    <alias index="8" name="" field="PB_PN_PA"/>
+    <alias field="ID" index="0" name=""/>
+    <alias field="class4" index="1" name=""/>
+    <alias field="class3" index="2" name=""/>
+    <alias field="class2" index="3" name=""/>
+    <alias field="class1" index="4" name=""/>
+    <alias field="wavg" index="5" name=""/>
+    <alias field="fcst_class" index="6" name=""/>
   </aliases>
   <excludeAttributesWMS/>
   <excludeAttributesWFS/>
   <defaults>
-    <default expression="" applyOnUpdate="0" field="ID"/>
-    <default expression="" applyOnUpdate="0" field="tercile1"/>
-    <default expression="" applyOnUpdate="0" field="tercile2"/>
-    <default expression="" applyOnUpdate="0" field="tercile3"/>
-    <default expression="" applyOnUpdate="0" field="mean"/>
-    <default expression="" applyOnUpdate="0" field="fcst_precip"/>
-    <default expression="" applyOnUpdate="0" field="fcst_class"/>
-    <default expression="" applyOnUpdate="0" field="hitscore"/>
-    <default expression="" applyOnUpdate="0" field="PB_PN_PA"/>
+    <default applyOnUpdate="0" field="ID" expression=""/>
+    <default applyOnUpdate="0" field="class4" expression=""/>
+    <default applyOnUpdate="0" field="class3" expression=""/>
+    <default applyOnUpdate="0" field="class2" expression=""/>
+    <default applyOnUpdate="0" field="class1" expression=""/>
+    <default applyOnUpdate="0" field="wavg" expression=""/>
+    <default applyOnUpdate="0" field="fcst_class" expression=""/>
   </defaults>
   <constraints>
-    <constraint notnull_strength="0" constraints="0" field="ID" unique_strength="0" exp_strength="0"/>
-    <constraint notnull_strength="0" constraints="0" field="tercile1" unique_strength="0" exp_strength="0"/>
-    <constraint notnull_strength="0" constraints="0" field="tercile2" unique_strength="0" exp_strength="0"/>
-    <constraint notnull_strength="0" constraints="0" field="tercile3" unique_strength="0" exp_strength="0"/>
-    <constraint notnull_strength="0" constraints="0" field="mean" unique_strength="0" exp_strength="0"/>
-    <constraint notnull_strength="0" constraints="0" field="fcst_precip" unique_strength="0" exp_strength="0"/>
-    <constraint notnull_strength="0" constraints="0" field="fcst_class" unique_strength="0" exp_strength="0"/>
-    <constraint notnull_strength="0" constraints="0" field="hitscore" unique_strength="0" exp_strength="0"/>
-    <constraint notnull_strength="0" constraints="0" field="PB_PN_PA" unique_strength="0" exp_strength="0"/>
+    <constraint constraints="0" exp_strength="0" field="ID" unique_strength="0" notnull_strength="0"/>
+    <constraint constraints="0" exp_strength="0" field="class4" unique_strength="0" notnull_strength="0"/>
+    <constraint constraints="0" exp_strength="0" field="class3" unique_strength="0" notnull_strength="0"/>
+    <constraint constraints="0" exp_strength="0" field="class2" unique_strength="0" notnull_strength="0"/>
+    <constraint constraints="0" exp_strength="0" field="class1" unique_strength="0" notnull_strength="0"/>
+    <constraint constraints="0" exp_strength="0" field="wavg" unique_strength="0" notnull_strength="0"/>
+    <constraint constraints="0" exp_strength="0" field="fcst_class" unique_strength="0" notnull_strength="0"/>
   </constraints>
   <constraintExpressions>
-    <constraint desc="" exp="" field="ID"/>
-    <constraint desc="" exp="" field="tercile1"/>
-    <constraint desc="" exp="" field="tercile2"/>
-    <constraint desc="" exp="" field="tercile3"/>
-    <constraint desc="" exp="" field="mean"/>
-    <constraint desc="" exp="" field="fcst_precip"/>
-    <constraint desc="" exp="" field="fcst_class"/>
-    <constraint desc="" exp="" field="hitscore"/>
-    <constraint desc="" exp="" field="PB_PN_PA"/>
+    <constraint desc="" field="ID" exp=""/>
+    <constraint desc="" field="class4" exp=""/>
+    <constraint desc="" field="class3" exp=""/>
+    <constraint desc="" field="class2" exp=""/>
+    <constraint desc="" field="class1" exp=""/>
+    <constraint desc="" field="wavg" exp=""/>
+    <constraint desc="" field="fcst_class" exp=""/>
   </constraintExpressions>
   <expressionfields/>
   <attributeactions>
-    <defaultAction key="Canvas" value="{00000000-0000-0000-0000-000000000000}"/>
+    <defaultAction value="{00000000-0000-0000-0000-000000000000}" key="Canvas"/>
   </attributeactions>
   <attributetableconfig sortOrder="0" actionWidgetStyle="dropDown" sortExpression="">
     <columns>
-      <column width="-1" name="tercile1" hidden="0" type="field"/>
-      <column width="-1" name="tercile2" hidden="0" type="field"/>
-      <column width="-1" name="tercile3" hidden="0" type="field"/>
-      <column width="-1" name="mean" hidden="0" type="field"/>
-      <column width="-1" name="fcst_class" hidden="0" type="field"/>
-      <column width="-1" name="fcst_precip" hidden="0" type="field"/>
-      <column width="-1" name="ID" hidden="0" type="field"/>
-      <column width="-1" hidden="1" type="actions"/>
-      <column width="-1" name="hitscore" hidden="0" type="field"/>
-      <column width="-1" name="PB_PN_PA" hidden="0" type="field"/>
+      <column hidden="0" type="field" width="-1" name="fcst_class"/>
+      <column hidden="0" type="field" width="-1" name="ID"/>
+      <column hidden="1" type="actions" width="-1"/>
+      <column hidden="0" type="field" width="-1" name="class4"/>
+      <column hidden="0" type="field" width="-1" name="class3"/>
+      <column hidden="0" type="field" width="-1" name="class2"/>
+      <column hidden="0" type="field" width="-1" name="class1"/>
+      <column hidden="0" type="field" width="-1" name="wavg"/>
     </columns>
   </attributetableconfig>
   <conditionalstyles>
@@ -347,19 +323,28 @@ def my_form_open(dialog, layer, feature):
   <featformsuppress>0</featformsuppress>
   <editorlayout>generatedlayout</editorlayout>
   <editable>
-    <field name="ID" editable="1"/>
-    <field name="PB_PN_PA" editable="1"/>
-    <field name="fcst_class" editable="1"/>
-    <field name="fcst_precip" editable="1"/>
-    <field name="hitscore" editable="1"/>
-    <field name="mean" editable="1"/>
-    <field name="tercile1" editable="1"/>
-    <field name="tercile2" editable="1"/>
-    <field name="tercile3" editable="1"/>
+    <field editable="1" name="ID"/>
+    <field editable="1" name="PB_PN_PA"/>
+    <field editable="1" name="class1"/>
+    <field editable="1" name="class2"/>
+    <field editable="1" name="class3"/>
+    <field editable="1" name="class4"/>
+    <field editable="1" name="fcst_class"/>
+    <field editable="1" name="fcst_precip"/>
+    <field editable="1" name="hitscore"/>
+    <field editable="1" name="mean"/>
+    <field editable="1" name="tercile1"/>
+    <field editable="1" name="tercile2"/>
+    <field editable="1" name="tercile3"/>
+    <field editable="1" name="wavg"/>
   </editable>
   <labelOnTop>
     <field labelOnTop="0" name="ID"/>
     <field labelOnTop="0" name="PB_PN_PA"/>
+    <field labelOnTop="0" name="class1"/>
+    <field labelOnTop="0" name="class2"/>
+    <field labelOnTop="0" name="class3"/>
+    <field labelOnTop="0" name="class4"/>
     <field labelOnTop="0" name="fcst_class"/>
     <field labelOnTop="0" name="fcst_precip"/>
     <field labelOnTop="0" name="hitscore"/>
@@ -367,6 +352,7 @@ def my_form_open(dialog, layer, feature):
     <field labelOnTop="0" name="tercile1"/>
     <field labelOnTop="0" name="tercile2"/>
     <field labelOnTop="0" name="tercile3"/>
+    <field labelOnTop="0" name="wavg"/>
   </labelOnTop>
   <widgets/>
   <previewExpression>COALESCE( "ID", '&lt;NULL>' )</previewExpression>

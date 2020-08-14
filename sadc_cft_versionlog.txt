@@ -52,3 +52,17 @@ Update: Default "zonepoint" value schanged to 1
 Update: Add CHIRPS data and SADC country boundaries geojson
 Feature: Add 'debug.bat' for terminal output screen 
  
+v1.3.2 - 12 August 2020
+Bugfix: Fix error on plotting graphs (convert pandas column to numpy array before plot)
+Bugfix: Installation errors (upgrade all dependencies during installation)
+Feature: Add options in the settings file to deactivate correlation files, regression files, and station forecast graphs
+Feature: Add options 'minHSscore' parameter in the settings file to allow adjustment of minimum HS for final forecast 
+Update: Update the styles for station and zone forecast 
+Update: MLP maximum iterations (max_iter) set to 3000 
+
+v1.3.3 - 13 August 202
+Feature: Filter out members whose probability of detection for forecasted class is lower than for the other classes
+Feature: Include legends in the final forecast PNGs
+Feature: Add average skill for the station/zone (based on the average HS of eligible members), include average HS in the plot
+Update: Use median instead of mean
+Bugfix: Correct error resulting from station IDs being numbers

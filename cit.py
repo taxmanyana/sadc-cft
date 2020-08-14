@@ -83,17 +83,18 @@ if __name__ == "__main__":
         config['trainStartYear'] = 1971
         config['trainEndYear'] = 2000
         config['predictorMonthIndex'] = 5
-        config['enableLR'] = True
         config['PValue'] = 0.05
         config['selectMode'] = 1
         config['stepwisePvalue'] = 0.3
+        config['minHSscore'] = 50
         config['inputFormat'] = "CSV"
         config['composition'] = "Cumulation"
         config['zonevector'] = {"file": "", "ID": 0, "attr": []}
         config['fcstyear'] = fcstyear
-        config['algorithms'] = []
+        config['algorithms'] = ['LR']
         config['basinbounds'] = {"minlat": -90, "maxlat": 90, "minlon": -180, "maxlon": 366}
-        config['plots'] = {'basemap': 'data\sadc_countries.geojson', 'zonepoints': 1}
+        config['plots'] = {'basemap': 'data\sadc_countries.geojson', 'zonepoints': 1,
+                           'corrmaps': 1, 'corrcsvs': 1, 'regrcsvs': 1, 'fcstgraphs': 1}
         config['colors'] = {'class0': '#ffffff', 'class1': '#d2b48c', 'class2': '#fbff03', 'class3': '#0bfffb',
                             'class4': '#1601fc'}
         window.progresslabel.setText("Default settings loaded.")
@@ -242,17 +243,15 @@ if __name__ == "__main__":
         config['algorithms'] = []
         if window.LRcheckBox.isChecked():
             config['algorithms'].append('LR')
-        if window.MLPcheckBox.isChecked(): config['algorithms'].append('MLP')
-
+        if window.MLPcheckBox.isChecked():
+            config['algorithms'].append('MLP')
         if len(config.get('algorithms')) == 0:
             window.progresslabel.setText("No algorithm set!")
             return None
-
         if window.cumRadio.isChecked():
             config['composition'] = "Cumulation"
         else:
             config['composition'] = "Average"
-
         if window.period1Radio.isChecked():
             config['fcstPeriodType'] = 0
             config['fcstPeriodIndex'] = seasons.index(str(window.periodComboBox.currentText()))
@@ -440,17 +439,19 @@ if __name__ == "__main__":
             if len(config.get('zonevector', {}).get('file')) == 0:
                 fcstcsvout = forecastdir + os.sep + fcstprefix + '_forecast.csv'
                 forecastsdf.to_csv(fcstcsvout, header=True, index=True)
-                highskilldf = forecastsdf[forecastsdf.HS.ge(50)][['ID', 'Lat', 'Lon', 'HS', 'class']]
+                forecastsdf = forecastsdf[forecastsdf.apply(lambda x: good_POD(x.Prob, x['class']), axis=1)]
+                highskilldf = forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))][['ID', 'Lat', 'Lon', 'HS', 'class']]
                 r, _ = highskilldf.shape
                 if r > 0:
                     stationclass = highskilldf.groupby(['ID', 'Lat', 'Lon']).apply(func=weighted_average).to_frame(name='WA')
                     stationclass[['wavg', 'class4', 'class3', 'class2', 'class1']] = pd.DataFrame(stationclass.WA.tolist(), index=stationclass.index)
                     stationclass = stationclass.drop(['WA'], axis=1)
                     stationclass['class'] = (stationclass['wavg']+0.5).astype(int)
+                    stationclass = stationclass.reset_index()
+                    stationclass['avgHS'] = stationclass.apply(lambda x: get_mean_HS(highskilldf, x.ID, 'ID'), axis=1)
                     stationclassout = forecastdir + os.sep + fcstprefix + '_station-forecast.csv'
                     stationclass.to_csv(stationclassout, header=True, index=True)
                     fcstjsonout = forecastdir + os.sep + fcstprefix + '_station-forecast.geojson'
-                    stationclass = stationclass.reset_index()
                     data2geojson(stationclass, fcstjsonout)
                     base_map = None
                     base_mapfile = config.get('plots', {}).get('basemap', '')
@@ -482,25 +483,33 @@ if __name__ == "__main__":
                         forecastsdf.loc[forecastsdf.ID == station, 'Zone'] = szone
                     fcstcsvout = forecastdir + os.sep + fcstprefix + '_zone_station_forecast.csv'
                     forecastsdf.to_csv(fcstcsvout, header=True, index=True)
+
                     # generate zone forecast
                     zonefcstprefix = forecastdir + os.sep + str(config.get('fcstyear')) + fcstPeriod + '_' + \
                                      predictordict[predictorName]['predictorMonth']
-                    highskilldf = forecastsdf[forecastsdf.HS.ge(50)][['HS', 'class', 'Zone']]
+                    forecastsdf = forecastsdf[forecastsdf.apply(lambda x: good_POD(x.Prob, x['class']), axis=1)]
+                    highskilldf = forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))][['HS', 'class', 'Zone']]
                     r, _ = highskilldf.shape
                     if r > 0:
-                        stationsdf = forecastsdf[forecastsdf.HS.ge(50)][['ID', 'Lat', 'Lon', 'HS', 'class']]
+                        stationsdf = forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))][['ID', 'Lat', 'Lon', 'HS', 'class']]
                         stationclass = stationsdf.groupby(['ID', 'Lat', 'Lon']).apply(func=weighted_average).to_frame(
                             name='WA')
                         stationclass[['wavg', 'class4', 'class3', 'class2', 'class1']] = pd.DataFrame(
                             stationclass.WA.tolist(), index=stationclass.index)
                         stationclass = stationclass.drop(['WA'], axis=1)
                         stationclass['class'] = (stationclass['wavg']+0.5).astype(int)
+                        stationclass = stationclass.reset_index()
+                        stationclass['avgHS'] = stationclass.apply(lambda x: get_mean_HS(stationsdf, x.ID, 'ID'), axis=1)
                         zoneclass = highskilldf.groupby('Zone').apply(func=weighted_average).to_frame(name='WA')
                         zoneclass[['wavg', 'class4', 'class3', 'class2', 'class1']] = pd.DataFrame(zoneclass.WA.tolist(), index=zoneclass.index)
                         zoneclass = zoneclass.drop(['WA'], axis=1)
                         zoneclass['class'] = (zoneclass['wavg']+0.5).astype(int)
+                        zoneclass = zoneclass.reset_index()
+                        print(highskilldf)
+                        zoneclass['avgHS'] = zoneclass.apply(lambda x: get_mean_HS(highskilldf, x.Zone, 'Zone'), axis=1)
                         ZoneID = config['zonevector']['attr'][config['zonevector']['ID']]
                         zonepoints = config.get('plots', {}).get('zonepoints', '0')
+                        zoneclass.set_index('Zone', inplace=True)
                         write_zone_forecast(zonefcstprefix, zoneclass, zonejson, ZoneID, colors, stationclass, zonepoints,
                                             fcstName)
                         window.progresslabel.setText('Done in '+str(convert(time.time()-start_time)))
@@ -515,7 +524,8 @@ if __name__ == "__main__":
     window.startyearLineEdit.setText(str(config.get('trainStartYear')))
     window.endyearLineEdit.setText(str(config.get('trainEndYear')))
     window.predictMonthComboBox.setCurrentIndex(int(config.get('predictorMonthIndex',0)))
-    window.LRcheckBox.setChecked(config.get('enableLR'))
+    if 'LR' in config.get('algorithms', []): window.LRcheckBox.setChecked(True)
+    if 'MLP' in config.get('algorithms', []): window.LRcheckBox.setChecked(True)
     window.pvaluelineEdit.setText(str(config.get('PValue')))
     window.swpvaluelineEdit.setText(str(config.get('stepwisePvalue')))
     window.missingvalueslineEdit.setText(str(config.get('predictantMissingValue')))
@@ -539,8 +549,14 @@ if __name__ == "__main__":
         window.cumRadio.setChecked(True)
     if config.get('composition') == "Average":
         window.avgRadio.setChecked(True)
-    if 'LR' in config.get('algorithms'): window.LRcheckBox.setChecked(True)
-    if 'MLP' in config.get('algorithms'): window.MLPcheckBox.setChecked(True)
+    if 'LR' in config.get('algorithms'):
+        window.LRcheckBox.setChecked(True)
+    else:
+        window.LRcheckBox.setChecked(False)
+    if 'MLP' in config.get('algorithms'):
+        window.MLPcheckBox.setChecked(True)
+    else:
+        window.MLPcheckBox.setChecked(False)
     window.minlatLineEdit.setText(str(config.get("basinbounds",{}).get('minlat')))
     window.maxlatLineEdit.setText(str(config.get("basinbounds",{}).get('maxlat')))
     window.minlonLineEdit.setText(str(config.get("basinbounds",{}).get('minlon')))

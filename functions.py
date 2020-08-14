@@ -9,6 +9,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 from sklearn import linear_model, cluster
 import statsmodels.api as sm
 from scipy.stats import pearsonr
@@ -38,8 +39,8 @@ driver = gdal.GetDriverByName('GTiff')
 
 # --- functions ---
 
-def rename(str):
-    return re.sub("[^0-9a-zA-Z]+", " ", str)
+def rename(string):
+    return re.sub("[^0-9a-zA-Z]+", " ", str(string))
 
 def integer(x):
     if np.isfinite(x):
@@ -185,7 +186,7 @@ def data2geojson(dfw, jsonout):
         geojson.Feature(geometry=geojson.Point((X["Lon"],
                                                 X["Lat"])),
                         properties=dict(ID=X["ID"], class4=X["class4"], class3=X["class3"], class2=X["class2"],
-                                        class1=X["class1"], wavg=X["wavg"], fcst_class=X["class"])))
+                                        class1=X["class1"], wavg=X["wavg"], fcst_class=X["class"], avgHS=X["avgHS"])))
     dfw.apply(insert_features, axis=1)
     with open(jsonout, 'w') as fp:
         geojson.dump(geojson.FeatureCollection(features), fp, sort_keys=False, ensure_ascii=False)
@@ -233,7 +234,7 @@ def station_forecast_png(prefix, stationclass, base_map, colors, outdir, fcstNam
             ax.add_patch(PolygonPatch(poly, fc='#ffffff', ec='#8f8f8f', alpha=1.0, zorder=2))
     for x in range(xs):
         fclass = stationclass.iloc[x]['class']
-        name = stationclass.iloc[x]['ID']
+        name = str(stationclass.iloc[x]['ID']) + ' ' + str(int(float(stationclass.iloc[x]['avgHS'])+0.5)) + '%'
         color = colors.get('class'+str(fclass), 'class0')
         midx = stationclass.iloc[x]['Lon']
         midy = stationclass.iloc[x]['Lat']
@@ -244,6 +245,12 @@ def station_forecast_png(prefix, stationclass, base_map, colors, outdir, fcstNam
     plt.xlabel('Longitude', fontsize=10)
     plt.ylabel('Latitude', fontsize=10)
     ax.axis('scaled')
+    lelem = [Patch(facecolor=colors.get('class0'), edgecolor='none', label='Forecast Class  (PA PN PB)'),
+             Patch(facecolor=colors.get('class4'), edgecolor='none', label='Above to Normal (40 35 25)'),
+             Patch(facecolor=colors.get('class3'), edgecolor='none', label='Normal to Above (35 40 25)'),
+             Patch(facecolor=colors.get('class2'), edgecolor='none', label='Normal to Below (25 40 35)'),
+             Patch(facecolor=colors.get('class1'), edgecolor='none', label='Below to Normal (25 35 40)')]
+    ax.legend(handles=lelem, prop={'size': 5})
     plt.savefig(outdir + os.sep + prefix + '_station-forecast.png', bbox_inches = 'tight')
     plt.close(fig)
 
@@ -260,6 +267,7 @@ def write_zone_forecast(zonefcstprefix, fcstzone_df, forecastjson, ZoneID, color
             feature['properties']['class1'] = list(fcstzone_df.loc[[ID],'class1'])[0]
             feature['properties']['wavg'] = list(fcstzone_df.loc[[ID],'wavg'])[0]
             feature['properties']['fcst_class'] = list(fcstzone_df.loc[[ID],'class'])[0]
+            feature['properties']['avgHS'] = list(fcstzone_df.loc[[ID],'avgHS'])[0]
     fcstzone_df.to_csv(fcstcsvout, header=True, index=True)
     with open(fcstjsonout, 'w') as fp:
         geojson.dump(forecastjson, fp)
@@ -272,14 +280,16 @@ def write_zone_forecast(zonefcstprefix, fcstzone_df, forecastjson, ZoneID, color
     for feature in features:
         fclass = 'class'+str(feature['properties'].get('fcst_class', 0))
         poly = feature['geometry']
-        name = feature['properties'][ZoneID]
+        avgHS = feature['properties'].get('avgHS', None)
         color = colors[fclass]
         xs = [x[0] for x in feature['geometry']['coordinates'][0][0]]
         ys = [x[1] for x in feature['geometry']['coordinates'][0][0]]
         midx = np.min(xs) + 0.25 * (np.max(xs) - np.min(xs))
         midy = np.max(ys) - 0.25 * (np.max(ys) - np.min(ys))
         ax.add_patch(PolygonPatch(poly, fc=color, ec='#6699cc', alpha=0.5, zorder=2))
-        plt.text(midx, midy, name, fontsize=8)
+        if avgHS is not None:
+            name = str(feature['properties'][ZoneID]) + ' ' + str(int(float(avgHS)+0.5)) + '%'
+            plt.text(midx, midy, name, fontsize=6)
     if str(zonepoints) == '1':
         stationclass = stationclass.reset_index()
         xs, _ = stationclass.shape
@@ -293,6 +303,12 @@ def write_zone_forecast(zonefcstprefix, fcstzone_df, forecastjson, ZoneID, color
     plt.title(fcstName + ' Forecast', fontsize=12)
     plt.xlabel('Longitude', fontsize=10)
     plt.ylabel('Latitude', fontsize=10)
+    lelem = [Patch(facecolor=colors.get('class0'), edgecolor='none', label='Forecast Class  (PA PN PB)'),
+             Patch(facecolor=colors.get('class4'), edgecolor='none', label='Above to Normal (40 35 25)'),
+             Patch(facecolor=colors.get('class3'), edgecolor='none', label='Normal to Above (35 40 25)'),
+             Patch(facecolor=colors.get('class2'), edgecolor='none', label='Normal to Below (25 40 35)'),
+             Patch(facecolor=colors.get('class1'), edgecolor='none', label='Below to Normal (25 35 40)')]
+    ax.legend(handles=lelem, prop={'size': 5})
     plt.savefig(zonefcstprefix + '_zone-forecast.png', bbox_inches = 'tight')
     plt.close(fig)	
 
@@ -313,6 +329,9 @@ def convert(seconds):
     minutes = seconds // 60
     seconds %= 60
     return "%d hour(s) %d minute(s) %d second(s)" % (hour, minutes, seconds)
+
+def get_mean_HS(df, ID, attr):
+    return np.mean(df[df[attr] == ID]['HS'])
 
 def model_skill(fcst_df, lim1, lim2):
     HS = 0
@@ -376,6 +395,26 @@ def model_skill(fcst_df, lim1, lim2):
         PA = np.nan
     return HS, HSS, POD_below, POD_normal, POD_above, FA_below, FA_normal, FA_above, cgtable_df, PB, PN, PA
 
+
+def good_POD(string, fclass):
+    if str(string).count(':') != 2:
+        return False
+    try:
+        probs = re.sub("[][]+", "", str(string)).split(':')
+        pB = int(probs[0])
+        pN = int(probs[1])
+        pA = int(probs[2])
+    except:
+        return False
+    if int(fclass) == 1:
+        return (pB >= pN) and (pB >= pA)
+    if (int(fclass) == 2) or (int(fclass) == 3):
+        return (pN >= pB) and (pN >= pA)
+    if int(fclass) == 4:
+        return (pA >= pB) and (pA >= pN)
+    return False
+
+
 def plot_Station_forecast(forecast_df, fcstPeriod, graphpng, station, q1, q2, q3):
     DPI = 100
     W = 1000
@@ -398,13 +437,13 @@ def plot_Station_forecast(forecast_df, fcstPeriod, graphpng, station, q1, q2, q3
     plt.fill_between(forecast_df['Year'], minvals, q1s, color='#ffe7d1')
     plt.fill_between(forecast_df['Year'], q1s, q3s, color='#e8f9e9')
     plt.fill_between(forecast_df['Year'], q3s, maxvals, color='#f4f6ff')
-    # plt.plot(forecast_df['Year'], [q1] * len(list(forecast_df['Year'])), color='#e5e5e5', linestyle='dashed')
-    plt.plot(forecast_df['Year'], [q2] * len(list(forecast_df['Year'])), color='#e5e5e5', linestyle='dashed')
-    # plt.plot(forecast_df['Year'], [q3] * len(list(forecast_df['Year'])), color='#e5e5e5', linestyle='dashed')
-    plt.plot(forecast_df['Year'], forecast_df[fcstPeriod], color='red', marker='o', label='Actual')
+    plt.plot(np.array(forecast_df['Year']), [q1] * len(list(forecast_df['Year'])), color='#e5e5e5', linestyle='dashed')
+    plt.plot(np.array(forecast_df['Year']), [q2] * len(list(forecast_df['Year'])), color='#e5e5e5', linestyle='dashed')
+    plt.plot(np.array(forecast_df['Year']), [q3] * len(list(forecast_df['Year'])), color='#e5e5e5', linestyle='dashed')
+    plt.plot(np.array(forecast_df['Year']), np.array(forecast_df[fcstPeriod]), color='red', marker='o', label='Actual')
     for n in range(len(graphs)):
         graph = graphs[n]
-        plt.plot(forecast_df['Year'], forecast_df[graph], color=colors[n], marker='+', label=graph, linewidth=0.7)
+        plt.plot(np.array(forecast_df['Year']), np.array(forecast_df[graph]), color=colors[n], marker='+', label=graph, linewidth=0.7)
     plt.title('Actual ('+fcstPeriod+') vs Forecasts for '+station, fontsize=12)
     plt.legend(prop={'size': 6})
     plt.xticks(list(forecast_df['Year']), [str(x) for x in list(forecast_df['Year'])], fontsize=8)
@@ -414,46 +453,41 @@ def plot_Station_forecast(forecast_df, fcstPeriod, graphpng, station, q1, q2, q3
     plt.close(fig)
 
 
-def writeout(prefix, r_matrix, p_matrix, corgrp_matrix, corr_df, lats, lons, outdir):
-    ncolssst = len(lons)
-    nrowssst = len(lats)
-    flats = lats[::-1]
-    nx = len(lons)
-    ny = len(flats)
-    xmin, ymin, xmax, ymax = [lons.min(), flats.min(), lons.max(), flats.max()]
-    xres = (xmax - xmin) / float(nx)
-    yres = (ymax - ymin) / float(ny)
-    geotransform = (xmin, xres, 0, ymax, 0, -yres)
+def writeout(prefix, r_matrix, p_matrix, corgrp_matrix, corr_df, lats, lons, outdir, config):
     os.makedirs(outdir, exist_ok=True)
-    # write p-matrix image
-    output1 = outdir + os.sep + prefix + '_correlation-r-values.tif'
-    output = outdir + os.sep + prefix + '_correlation-p-values.tif'
-    dataset1 = driver.Create(output1, ncolssst, nrowssst, eType=gdal.GDT_Float32)
-    dataset2 = driver.Create(output, ncolssst, nrowssst, eType=gdal.GDT_Float32)
-    dataset1.SetProjection(proj)
-    dataset2.SetProjection(proj)
-    dataset1.SetGeoTransform(geotransform)
-    dataset2.SetGeoTransform(geotransform)
-    _ = dataset1.GetRasterBand(1).WriteArray(np.flip(r_matrix, axis=0))
-    _ = dataset2.GetRasterBand(1).WriteArray(np.flip(p_matrix, axis=0))
-    dataset1.FlushCache()
-    dataset2.FlushCache()
-    dataset1 = None
-    dataset2 = None
-    # write correlation basins image
-    corgrp_matrix[corgrp_matrix == -1] = 255
-    corgrp_matrix[np.isnan(corgrp_matrix)] = 255
-    output = outdir + os.sep + prefix + '_correlation-basins.tif'
-    dataset3 = driver.Create(output, ncolssst, nrowssst, eType=gdal.GDT_Byte)
-    dataset3.SetProjection(proj)
-    dataset3.SetGeoTransform(geotransform)
-    _ = dataset3.GetRasterBand(1).WriteArray(np.flip(corgrp_matrix, axis=0))
-    dataset3.FlushCache()
-    dataset3 = None
+    if int(config.get('plots', {}).get('corrmaps', 1)) == 1:
+        ncolssst = len(lons)
+        nrowssst = len(lats)
+        flats = lats[::-1]
+        nx = len(lons)
+        ny = len(flats)
+        xmin, ymin, xmax, ymax = [lons.min(), flats.min(), lons.max(), flats.max()]
+        xres = (xmax - xmin) / float(nx)
+        yres = (ymax - ymin) / float(ny)
+        geotransform = (xmin, xres, 0, ymax, 0, -yres)
+        # write p-matrix image
+        output = outdir + os.sep + prefix + '_correlation-p-values.tif'
+        dataset2 = driver.Create(output, ncolssst, nrowssst, eType=gdal.GDT_Float32)
+        dataset2.SetProjection(proj)
+        dataset2.SetGeoTransform(geotransform)
+        _ = dataset2.GetRasterBand(1).WriteArray(np.flip(p_matrix, axis=0))
+        dataset2.FlushCache()
+        dataset2 = None
+        # write correlation basins image
+        corgrp_matrix[corgrp_matrix == -1] = 255
+        corgrp_matrix[np.isnan(corgrp_matrix)] = 255
+        output = outdir + os.sep + prefix + '_correlation-basins.tif'
+        dataset3 = driver.Create(output, ncolssst, nrowssst, eType=gdal.GDT_Byte)
+        dataset3.SetProjection(proj)
+        dataset3.SetGeoTransform(geotransform)
+        _ = dataset3.GetRasterBand(1).WriteArray(np.flip(corgrp_matrix, axis=0))
+        dataset3.FlushCache()
+        dataset3 = None
     # print correlation csv
-    csv = outdir + os.sep + prefix + '_correlation-basin-avgs.csv'
-    corr_df.reset_index()
-    corr_df.to_csv(csv)
+    if int(config.get('plots', {}).get('corrcsvs', 1)) == 1:
+        csv = outdir + os.sep + prefix + '_correlation-basin-avgs.csv'
+        corr_df.reset_index()
+        corr_df.to_csv(csv)
 
 
 def run_model_skill(fcst_df, fcstPeriod, fcstcol, r2score, training_actual):
@@ -477,7 +511,7 @@ def run_model_skill(fcst_df, fcstPeriod, fcstcol, r2score, training_actual):
     skill_df['Value'] = [r2score, HS, HSS, POD_below, POD_normal, POD_above, FA_below, FA_normal, FA_above, PB,
                          PN, PA]
     if fcst_precip < 0:  fcst_precip = 0.0
-    qlimits = [0.33, 0.5, 0.66]
+    qlimits = [0.3333, 0.5, 0.6667]
     dfp = pd.DataFrame(observed_clean)[0].quantile(qlimits)
     q1 = float(round(dfp.loc[qlimits[0]], 1))
     q2 = float(round(dfp.loc[qlimits[1]], 1))
@@ -496,8 +530,8 @@ def run_model_skill(fcst_df, fcstPeriod, fcstcol, r2score, training_actual):
     if fcst_precip >= q3:
         forecast_class = 4
         Prob = PA
-    pmean = round(np.mean(observed_clean), 1)
-    return q1, q2, q3, pmean, fcst_precip, forecast_class, HS, str(Prob).replace(',', ':'), cgtable_df, skill_df
+    pmedian = round(np.median(observed_clean), 1)
+    return q1, q2, q3, pmedian, fcst_precip, forecast_class, HS, str(Prob).replace(',', ':'), cgtable_df, skill_df
 
 
 def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, station):
@@ -516,7 +550,7 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
     trainingYears = [yr for yr in range(trainStartYear, trainEndYear + 1)]
     nyears = len(trainingYears)
     forecastdf = pd.DataFrame(columns=['Predictor', 'Algorithm', 'ID', 'Lat', 'Lon', 't1', 't2', 't3',
-                                       'mean', 'fcst', 'class', 'r2score', 'HS', 'Prob'])
+                                       'median', 'fcst', 'class', 'r2score', 'HS', 'Prob'])
 
     for predictorName in predictordict:
         print('\npredictor',predictorName,'...')
@@ -648,7 +682,7 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         basin_matrix = np.array(corr_df[basin_arr])
         corroutdir = outdir + os.sep + "Correlation"
         writeout(prefix, r_matrix, p_matrix, corgrp_matrix, corr_df, predictordict[predictorName]['lats'],
-                 predictordict[predictorName]['lons'], corroutdir)
+                 predictordict[predictorName]['lons'], corroutdir, config)
 
         # get basin combination with highest r-square: returns bestr2score, final_basins, final_basin_matrix
         print('checking best basin combination...')
@@ -671,7 +705,7 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         csv = corroutdir + os.sep + prefix + '_forward-selection.csv'
         comment_df = pd.DataFrame(columns=['Comment'])
         comment_df['Comment'] = comments
-        comment_df.to_csv(csv, header=True, index=False)
+        if int(config.get('plots', {}).get('corrcsvs', 1)) == 1: comment_df.to_csv(csv, header=True, index=False)
 
         combo_basin_matrix = np.zeros((len(yearssst), len(final_basins))) * np.nan
         # loop for all years where SST is available
@@ -713,7 +747,10 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                             hiddenlayerSize = (x + 1, y + 1)
                         regm = MLPRegressor(hidden_layer_sizes=hiddenlayerSize,
                                             activation=activation_fn, solver=solver_fn, random_state=42, max_iter=700)
-                        regm.fit(X_train[notnull], np.asarray(training_actual)[notnull])
+                        try:
+                            regm.fit(X_train[notnull], np.asarray(training_actual)[notnull])
+                        except:
+                            continue
                         for z in range(len(X_test)):
                             forecasts.append(regm.predict(X_test[z].reshape(1, -1))[0])
                         warnings.filterwarnings('error')
@@ -752,29 +789,30 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                     mlpdirout = regoutdir + os.sep + 'MLP'
                     os.makedirs(mlpdirout, exist_ok=True)
                     file = mlpdirout + os.sep + prefix + '_' + fcstPeriod + '_mlpsummary.txt'
-                    f = open(file, 'w')
-                    f.write('MLPRegressor Parameters ---\n')
-                    f.write('architecture=' + str(nbasins) + ',' + r + ',' + s + ',1\n')
-                    f.write('r-square: ' + str(r2score) + ', p-value:' + str(n) + '\n')
-                    f.write('processing time: ' + str(time.time() - start_time) + ' seconds\n\n')
-                    f.write(json.dumps(regm.get_params(), indent=4, sort_keys=True))
-                    f.write('\n\n')
-                    f.write('Ranking of number of neurons per hidden layer (HL) ---\n')
-                    f.write('("HL1_HL2", (r2score, std))\n')
-                    for ele in combs[:20]:
-                        f.write(str(ele) + '\n')
-                    f.close()
+                    if int(config.get('plots', {}).get('regrcsvs', 1)) == 1:
+                        f = open(file, 'w')
+                        f.write('MLPRegressor Parameters ---\n')
+                        f.write('architecture=' + str(nbasins) + ',' + r + ',' + s + ',1\n')
+                        f.write('r-square: ' + str(r2score) + ', p-value:' + str(n) + '\n')
+                        f.write('processing time: ' + str(time.time() - start_time) + ' seconds\n\n')
+                        f.write(json.dumps(regm.get_params(), indent=4, sort_keys=True))
+                        f.write('\n\n')
+                        f.write('Ranking of number of neurons per hidden layer (HL) ---\n')
+                        f.write('("HL1_HL2", (r2score, std))\n')
+                        for ele in combs[:20]:
+                            f.write(str(ele) + '\n')
+                        f.close()
                     csv = mlpdirout + os.sep + prefix + '_' + fcstPeriod + '_forecast_matrix.csv'
                     mlp_fcstdf.reset_index()
-                    mlp_fcstdf.to_csv(csv, index=True)
+                    if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: mlp_fcstdf.to_csv(csv, index=True)
                     #
-                    q1, q2, q3, pmean, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
+                    q1, q2, q3, pmedian, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
                         run_model_skill(mlp_fcstdf, fcstPeriod, 'MLPfcst', r2score, training_actual)
                     csv = mlpdirout + os.sep + prefix + '_score-contingency-table.csv'
-                    cgtable_df.to_csv(csv, index=False)
+                    if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: cgtable_df.to_csv(csv, index=False)
                     csv = mlpdirout + os.sep + prefix + '_score-statistics.csv'
-                    skill_df.to_csv(csv, index=False)
-                    a_series = pd.Series([predictorName, algorithm, station, lat, lon, q1, q2, q3, pmean, famnt,
+                    if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: skill_df.to_csv(csv, index=False)
+                    a_series = pd.Series([predictorName, algorithm, station, lat, lon, q1, q2, q3, pmedian, famnt,
                                           fclass, r2score, HS, Prob], index=forecastdf.columns)
                     forecastdf = forecastdf.append(a_series, ignore_index=True)
                     mlp_fcstdf.rename(columns={'MLPfcst': predictorName +'_MLP'}, inplace=True)
@@ -806,7 +844,7 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                 os.makedirs(lrdirout, exist_ok=True)
                 csv = lrdirout + os.sep + prefix + '_' + fcstPeriod + '_forecast_matrix.csv'
                 lr_fcstdf.reset_index()
-                lr_fcstdf.to_csv(csv, index=True)
+                if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: lr_fcstdf.to_csv(csv, index=True)
                 #
                 regrFormula = {"intercept": intercept, "coefficients": coefficients}
                 coeff_arr = list(regrFormula["coefficients"])
@@ -814,22 +852,22 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                 reg_df = pd.DataFrame(columns=selected_basins)
                 reg_df.loc[0] = coeff_arr
                 csv = lrdirout+ os.sep + prefix + '_correlation-formula.csv'
-                reg_df.to_csv(csv, index=False)
+                if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: reg_df.to_csv(csv, index=False)
                 #
-                q1, q2, q3, pmean, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
+                q1, q2, q3, pmedian, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
                     run_model_skill(lr_fcstdf, fcstPeriod, 'LRfcst', r2score, training_actual)
                 csv = lrdirout + os.sep + prefix + '_score-contingency-table.csv'
-                cgtable_df.to_csv(csv, index=False)
+                if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: cgtable_df.to_csv(csv, index=False)
                 csv = lrdirout + os.sep + prefix + '_score-statistics.csv'
-                skill_df.to_csv(csv, index=False)
-                a_series = pd.Series([predictorName, algorithm, station, lat, lon, q1, q2, q3, pmean, famnt,
+                if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: skill_df.to_csv(csv, index=False)
+                a_series = pd.Series([predictorName, algorithm, station, lat, lon, q1, q2, q3, pmedian, famnt,
                                       fclass, r2score, HS, Prob], index=forecastdf.columns)
                 forecastdf = forecastdf.append(a_series, ignore_index=True)
                 lr_fcstdf.rename(columns={'LRfcst': predictorName + '_LR'}, inplace=True)
                 stationYF_dfs.append(lr_fcstdf)
 
     # plot the forecast graphs
-    if len(stationYF_dfs) > 0:
+    if (len(stationYF_dfs) > 0) and (int(config.get('plots', {}).get('fcstgraphs', 1)) == 1):
         stationYF_df = pd.concat(stationYF_dfs, axis=1, join='outer')
         stationYF_df = stationYF_df.loc[:, ~stationYF_df.columns.duplicated()]
         stationYF_df = stationYF_df.reset_index()

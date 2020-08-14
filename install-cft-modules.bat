@@ -43,114 +43,58 @@ if %errorlevel% equ 0 (
  echo pip upgraded successfully
 )
 echo.
-python -c "import netCDF4" >nul 2>&1
-IF %errorlevel% NEQ 0 (
-  echo installing netCDF4...
-  python -m pip install --upgrade netCDF4
-  if %errorlevel% equ 0 (
-    echo netCDF4 installed successfully
-  )
-) else (
-  echo netCDF4 already installed
+echo upgrading netCDF4...
+python -m pip install --upgrade netCDF4
+if %errorlevel% equ 0 (
+ echo netCDF4 upgraded successfully
 )
 echo.
-python -c "import pandas" >nul 2>&1
-IF %errorlevel% NEQ 0 (
-  echo installing pandas...
-  python -m pip install --upgrade pandas
-  if %errorlevel% equ 0 (
-    echo pandas installed successfully
-  )
-) else (
-  echo pandas already installed
+echo upgrading pandas...
+python -m pip install --upgrade pandas
+if %errorlevel% equ 0 (
+ echo pandas upgraded successfully
 )
 echo.
-python -c "import setuptools" >nul 2>&1
-IF %errorlevel% NEQ 0 (
-  echo installing setuptools...
-  python -m pip install --upgrade setuptools
-  if %errorlevel% equ 0 (
-   echo setuptools installed successfully
-  )
-) else (
-  echo setuptools already installed
+echo upgrading setuptools...
+python -m pip install --upgrade setuptools
+if %errorlevel% equ 0 (
+ echo setuptools upgraded successfully
 )
 echo.
-python -c "import sklearn" >nul 2>&1
-IF %errorlevel% NEQ 0 (
-  echo installing sklearn...
-  python -m pip install --upgrade sklearn
-  if %errorlevel% equ 0 (
-   echo sklearn installed successfully
-  )
-) else (
-  echo sklearn already installed
+echo upgrading sklearn...
+python -m pip install --upgrade sklearn
+if %errorlevel% equ 0 (
+ echo sklearn upgraded successfully
 )
 echo.
-python -c "import statsmodels" >nul 2>&1
-IF %errorlevel% NEQ 0 (
-  echo installing statsmodels...
-  python -m pip install --upgrade statsmodels
-  if %errorlevel% equ 0 (
-   echo statsmodels installed successfully
-  )
-) else (
-  echo statsmodels already installed
+echo upgrading statsmodels...
+python -m pip install --upgrade statsmodels
+if %errorlevel% equ 0 (
+ echo statsmodels upgraded successfully
 )
 echo.
-python -c "import scipy" >nul 2>&1
-IF %errorlevel% NEQ 0 (
-echo installing scipy...
+echo upgrading scipy...
 python -m pip install --upgrade scipy
 if %errorlevel% equ 0 (
- echo scipy installed successfully
-)
-) else (
-  echo scipy already installed
+ echo scipy upgraded successfully
 )
 echo.
-python -c "import geojson" >nul 2>&1
-IF %errorlevel% NEQ 0 (
-  echo installing geojson...
-  python -m pip install --upgrade geojson
-  if %errorlevel% equ 0 (
-   echo geojson installed successfully
-  )
-) else (
-  echo geojson already installed
+echo upgrading geojson...
+python -m pip install --upgrade geojson
+if %errorlevel% equ 0 (
+ echo geojson upgraded successfully
 )
 echo.
-python -c "import numpy" >nul 2>&1
-IF %errorlevel% NEQ 0 (
-  echo installing numpy...
-  python -m pip install --upgrade numpy
-  if %errorlevel% equ 0 (
-   echo numpy installed successfully
-  )
-) else (
-  echo numpy already installed
+echo upgrading shapely...
+python -m pip install --upgrade shapely
+if %errorlevel% equ 0 (
+ echo shapely upgraded successfully
 )
 echo.
-python -c "import shapely" >nul 2>&1
-IF %errorlevel% NEQ 0 (
-  echo installing shapely...
-  python -m pip install --upgrade shapely
-  if %errorlevel% equ 0 (
-   echo shapely installed successfully
-  )
-) else (
-  echo shapely already installed
-)
-echo.
-python -c "import descartes" >nul 2>&1
-IF %errorlevel% NEQ 0 (
-  echo installing descartes...
-  python -m pip install --upgrade descartes
-  if %errorlevel% equ 0 (
-   echo descartes installed successfully
-  )
-) else (
-  echo descartes already installed
+echo upgrading descartes...
+python -m pip install --upgrade descartes
+if %errorlevel% equ 0 (
+ echo descartes upgraded successfully
 )
 echo.
 pause
