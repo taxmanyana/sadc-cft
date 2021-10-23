@@ -21,7 +21,7 @@ pwd = os.path.dirname(os.path.realpath('__file__'))
 qtCreatorFile = "cft.ui"
 
 # Global Variables
-version = '1.4.1'
+version = '1.4.2'
 months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 seasons = ['JFM','FMA','MAM','AMJ','MJJ','JJA','JAS','ASO','SON','OND','NDJ','DJF']
 month_start_season = {'JFM': 'Jan', 'FMA': 'Feb', 'MAM': 'Mar', 'AMJ': 'Apr', 'MJJ': 'May', 'JJA': 'Jun', 'JAS': 'Jul',
@@ -625,7 +625,7 @@ if __name__ == "__main__":
                         config.get('fcstyear')) + ' ' + fcstPeriod + ' using ' + \
                                          predictorMonth + ' initial conditions'
                     output.comments = 'Created ' + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
-                    output.source = 'SADC-CFTv' + config.get('Version', '1.4.1')
+                    output.source = 'SADC-CFTv' + config.get('Version', '1.4.2')
                     output.history = comments
                     lat = output.createDimension('lat', rows)
                     lon = output.createDimension('lon', cols)

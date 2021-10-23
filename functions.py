@@ -628,7 +628,7 @@ def writeout(prefix, p_matrix, corgrp_matrix, corr_df, lats, lons, outdir, confi
         output = Dataset(outfile, 'w', format='NETCDF4')
         output.description = 'P-Values and High-Correlation Basins [' + prefix + ']'
         output.comments = 'Created ' + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
-        output.source = 'SADC-CFTv' + config.get('Version', '1.4.1')
+        output.source = 'SADC-CFTv' + config.get('Version', '1.4.2')
         lat = output.createDimension('lat', len(lats))
         lon = output.createDimension('lon', len(lons))
         T = output.createDimension('T', 1)

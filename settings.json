@@ -1,41 +1,34 @@
 {
-    "Version": "1.4.1",
-    "outDir": "C:/Users/Moitlhobogi/Documents/projects/CFT/dataandpredictors",
+    "Version": "1.4.2",
+    "outDir": "/scratch/cft",
     "predictorList": [
-        "C:/Users/Moitlhobogi/Documents/projects/CFT/dataandpredictors/GPZ500Jul.nc",
-        "C:/Users/Moitlhobogi/Documents/projects/CFT/dataandpredictors/GPZ850Jul.nc",
-        "C:/Users/Moitlhobogi/Documents/projects/CFT/dataandpredictors/sst.nc"
+        "/cm/shared/apps/cft/sadc_cft-1.4.2/data/GPH850_Jul_1960_2020.nc",
+        "/cm/shared/apps/cft/sadc_cft-1.4.2/data/SST_Jul_1960_2020.nc"
     ],
     "predictantList": [
-        "C:/Users/Moitlhobogi/Documents/projects/CFT/dataandpredictors/Sarcof Rainfall Data CFT few.csv"
+        "/cm/shared/apps/cft/sadc_cft-1.4.2/data/chirps_monthly_1981_2020_BWA.csv"
     ],
     "predictantMissingValue": -9999,
     "predictantattr": "",
-    "fcstPeriodStartMonth": "Dec",
+    "fcstPeriodStartMonth": "Oct",
     "fcstPeriodLength": "3month",
-    "trainStartYear": 1981,
-    "trainEndYear": 2010,
+    "trainStartYear": 1971,
+    "trainEndYear": 2000,
     "predictorMonth": "Jul",
     "PValue": 0.05,
     "stepwisePvalue": 0.3,
-    "minHSscore": 50,
+    "minHSscore": 40,
     "PODfilter": 1,
     "inputFormat": "CSV",
     "composition": "Sum",
     "zonevector": {
-        "file": "C:/Users/Moitlhobogi/Documents/projects/CFT/dataandpredictors/DJF.geojson",
-        "ID": 1,
-        "attr": [
-            "PRIMARY",
-            "PRIM_ID",
-            "jfm",
-            "ID"
-        ]
+        "file": "",
+        "ID": -1,
+        "attr": []
     },
-    "fcstyear": 2021,
+    "fcstyear": 2020,
     "algorithms": [
-        "LR",
-        "MLP"
+        "LR"
     ],
     "basinbounds": {
         "minlat": -90.0,
