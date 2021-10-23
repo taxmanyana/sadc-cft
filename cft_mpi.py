@@ -19,7 +19,7 @@ size = comm.Get_size()
 rank = comm.Get_rank()
 
 # Global Variables
-version = '1.4.0'
+version = '1.4.1'
 months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 seasons = ['JFM','FMA','MAM','AMJ','MJJ','JJA','JAS','ASO','SON','OND','NDJ','DJF']
 csvheader = 'Year,Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec'
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     except:
         input = 'Defaults'
         config = {}
-        config['version'] = version
+        config['Version'] = version
         config['outDir'] = ''
         config['predictorList'] = []
         config['predictantList'] = []
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     os.makedirs(outdir, exist_ok=True)
 
     if rank == 0:
-        print('\nSADC CFT', config.get('version'))
+        print('\nSADC CFT', config.get('Version'))
         print('\nForecast:', config.get('fcstyear'), fcstPeriod)
         print('Configuration:', input)
         print('Output directory:', config.get('outDir'))
@@ -314,6 +314,8 @@ if __name__ == "__main__":
                     highskilldf = forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))][['ID', 'Lat', 'Lon', 'HS', 'class']]
                     r, _ = highskilldf.shape
                     if r > 0:
+                        csv = forecastdir + os.sep + fcstprefix + '_station_members_selected.csv'                   
+                        forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))].to_csv(csv, header=True, index=True)
                         stationclass = highskilldf.groupby(['ID', 'Lat', 'Lon']).apply(func=weighted_average).to_frame(name='WA')
                         stationclass[['wavg', 'class4', 'class3', 'class2', 'class1']] = pd.DataFrame(stationclass.WA.tolist(), index=stationclass.index)
                         stationclass = stationclass.drop(['WA'], axis=1)
@@ -359,6 +361,8 @@ if __name__ == "__main__":
                         highskilldf = forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))][['HS', 'class', 'Zone']]
                         r, _ = highskilldf.shape
                         if r > 0:
+                            csv = forecastdir + os.sep + fcstprefix + '_zone_members_selected.csv'                        
+                            forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))].to_csv(csv, header=True, index=True)
                             stationsdf = forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))][['ID', 'Lat', 'Lon', 'HS', 'class']]
                             stationclass = stationsdf.groupby(['ID', 'Lat', 'Lon']).apply(func=weighted_average).to_frame(
                                 name='WA')

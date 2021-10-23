@@ -14,30 +14,18 @@ Funding: African Development Bank, European Union, SADC
 
 INTRODUCTION
 ------------
-The CFT is being developed by the CSC under the Southern African Regional Climate Information Services for Disaster Resilience Development (SARCIS-DR) Project. The main objective of the tool is to support the CSC and NMHSs to automate the manual statistical process for generating a seasonal forecast outlook for the Southern African Regional Climate Outlook Forum. The main programming language used is Python version 3.
+The SADC Climate Services Centre (CSC) is developing the SADC Climate Forecasting Tool (SADC CFT), 
+which is a statistical seasonal forecasting tool. It uses Quantum GIS (QGIS) version 3 core utilities, 
+and is programmed in the Python language.
 
-
-LICENSE
--------
-The CFT code and software is licensed under the Zero-Clause BSD license.
-Permission to use, copy, modify, and/or distribute this software for any purpose
-with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
-OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
-TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
-THIS SOFTWARE.
-
-Copyright (C) 2020 by SADC-CSC <csc1@sadc.int>
+The CFT is being developed by the CSC under the Southern African Regional Climate Information Services 
+for Disaster Resilience Development (SARCIS-DR) Project. The main objective of the tool is to support 
+CSC and NMHSs to automate climate data products generation. 
 
 
 DOWNLOADING CFT
 ------------
 The latest version of CFT is available from the SADC-CSC FTP site:  ftp://cscftp.sadc.int/software/cft/ 
-
 
 INSTALLATION ON WINDOWS
 --------------------
@@ -47,13 +35,13 @@ INSTALLATION ON WINDOWS
 4. Right-click the "install-cft-modules.bat" and select "Run as Administrator" to install the required python modules (internet connection required)
 5. Once installed, CFT is easily be run by double-clicking on "start_cft.bat"
 
-
 INSTALLATION ON LINUX
 --------------------
 The installation script will download dependency sources, compile and deploy the CFT
 1. Unpack (unzip) the sadc_cft-x.x.x.zip ZIP file to a directory of your choosing
 2. On the terminal, navigate into the extracted folder:  cd sadc_cft-x.x.x 
 3. Run the installation script using the following command:   ./install-cft-linux.sh
+   NB: install-cft-linux.sh will try to download some dependencies using hardcoded URLs, if a URL fails you can edit the script with correct/updated URL and re-run 
 4. Once installed, you can run CFT from the terminal using the following commands:
    source python3/bin/activate
    python3 cft.py settings.json
@@ -61,7 +49,6 @@ The installation script will download dependency sources, compile and deploy the
 6. The MPI version can be run on the terminal by executing the following commands:
    source python3/bin/activate
    mpirun -n 40 python3 cft_mpi.py settings.json
-
 
 ALTERNATIVE INSTALLATION ON LINUX (FOR UBUNTU ONLY)
 --------------------
@@ -71,6 +58,7 @@ ALTERNATIVE INSTALLATION ON LINUX (FOR UBUNTU ONLY)
 4. Run the installation script using the following command:   ./install-cft-ubuntu.sh
 5. Once installed, you can run CFT from the terminal using command:    ./cft_ubuntu.sh
 6. CFT also has a Desktop launcher "CFT.desktop" which will be copied to the Desktop. On the Desktop double-click on "CFT.desktop" to run the tool (if it is the first time then it will bring a pop-up for you to trust and accept)
+
 
 
 FEATURES
@@ -85,3 +73,7 @@ FEATURES
 - Supports Linear Regression and Artificial Intelligence (Multilayer Perceptron regression)
 - For station (point) data, a forecast can be summarized per zone, where a weighted average forecast is produced from the stations within the zone
 - Computes skill scores for each forecast
+
+Future developments
+- Validates forecasts, if ground data is available for forecast period
+

@@ -21,7 +21,7 @@ pwd = os.path.dirname(os.path.realpath('__file__'))
 qtCreatorFile = "cft.ui"
 
 # Global Variables
-version = '1.4.0'
+version = '1.4.1'
 months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 seasons = ['JFM','FMA','MAM','AMJ','MJJ','JJA','JAS','ASO','SON','OND','NDJ','DJF']
 month_start_season = {'JFM': 'Jan', 'FMA': 'Feb', 'MAM': 'Mar', 'AMJ': 'Apr', 'MJJ': 'May', 'JJA': 'Jun', 'JAS': 'Jul',
@@ -78,7 +78,7 @@ if __name__ == "__main__":
             config = json.load(read_file)
     except:
         config = {}
-        config['version'] = version
+        config['Version'] = version
         config['outDir'] = ''
         config['predictorList'] = []
         config['predictantList'] = []
@@ -300,7 +300,7 @@ if __name__ == "__main__":
         with open(settingsfile, 'w') as fp:
             json.dump(config, fp, indent=4)
 
-        print('\nSADC CFT', config.get('version'))
+        print('\nSADC CFT', config.get('Version'))
         print('\nForecast:', config.get('fcstyear'), window.periodComboBox.currentText())
         print('Configuration:', os.path.basename(settingsfile))
         print('Output directory:', config.get('outDir'))
@@ -499,6 +499,8 @@ if __name__ == "__main__":
                     highskilldf = forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))][['ID', 'Lat', 'Lon', 'HS', 'class']]
                     r, _ = highskilldf.shape
                     if r > 0:
+                        csv = forecastdir + os.sep + fcstprefix + '_station_members_selected.csv'                   
+                        forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))].to_csv(csv, header=True, index=True)
                         stationclass = highskilldf.groupby(['ID', 'Lat', 'Lon']).apply(func=weighted_average).to_frame(name='WA')
                         stationclass[['wavg', 'class4', 'class3', 'class2', 'class1']] = pd.DataFrame(stationclass.WA.tolist(), index=stationclass.index)
                         stationclass = stationclass.drop(['WA'], axis=1)
@@ -548,6 +550,8 @@ if __name__ == "__main__":
                         highskilldf = forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))][['HS', 'class', 'Zone']]
                         r, _ = highskilldf.shape
                         if r > 0:
+                            csv = forecastdir + os.sep + fcstprefix + '_zone_members_selected.csv'                        
+                            forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))].to_csv(csv, header=True, index=True)
                             stationsdf = forecastsdf[forecastsdf.HS.ge(int(config.get('minHSscore', 50)))][['ID', 'Lat', 'Lon', 'HS', 'class']]
                             stationclass = stationsdf.groupby(['ID', 'Lat', 'Lon']).apply(func=weighted_average).to_frame(
                                 name='WA')
@@ -621,7 +625,7 @@ if __name__ == "__main__":
                         config.get('fcstyear')) + ' ' + fcstPeriod + ' using ' + \
                                          predictorMonth + ' initial conditions'
                     output.comments = 'Created ' + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
-                    output.source = 'SADC-CFTv' + config.get('version', '1.4.0')
+                    output.source = 'SADC-CFTv' + config.get('Version', '1.4.1')
                     output.history = comments
                     lat = output.createDimension('lat', rows)
                     lon = output.createDimension('lon', cols)

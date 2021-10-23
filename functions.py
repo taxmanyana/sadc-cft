@@ -23,6 +23,14 @@ from datetime import datetime
 import warnings
 import numpy as np
 import geojson, json
+try:
+	from osgeo import gdal
+except:
+	pass
+try:
+	import gdal
+except:
+	pass
 SSTclusterSize=1200.
 kms_per_radian = 6371.0088
 epsilon = SSTclusterSize*1.0 / kms_per_radian
@@ -130,7 +138,7 @@ class netcdf_data:
             if self.tunits == 'months':
                 timearr.append((self.ref_date + relativedelta(months=+int(tarr[x]))).strftime("%Y%m%d"))
             if self.tunits == 'days':
-                timearr.append((self.ref_date + relativedelta(days=+tarr[x])).strftime("%Y%m%d"))
+                timearr.append((self.ref_date + relativedelta(days=+int(tarr[x]))).strftime("%Y%m%d"))
         return timearr
 
     def years(self):
@@ -415,7 +423,10 @@ def weighted_average(group):
    n3 = list(fclass).count(3)
    n2 = list(fclass).count(2)
    n1 = list(fclass).count(1)
-   wavg = np.average(fclass,weights=HS)
+   try:
+      wavg = np.average(fclass,weights=HS)
+   except:
+      wavg = 0
    return wavg, n4, n3, n2, n1
 
 def weighted_average_fcst(group):
@@ -425,7 +436,10 @@ def weighted_average_fcst(group):
    t3 = int(np.ravel(group['t3'])[0]+0.5)
    t2 = int(np.ravel(group['t2'])[0]+0.5)
    t1 = int(np.ravel(group['t1'])[0]+0.5)
-   wavgclass = int(np.average(fclass, weights=HS)+0.5)
+   try:
+      wavgclass = int(np.average(fclass, weights=HS)+0.5)
+   except:
+      wavgclass = 0
    avgfcst = int(np.mean(fcst)+0.5)
    avgHS = int(np.mean(HS)+0.5)
    return t1, t2, t3, avgfcst, avgHS, wavgclass
@@ -604,16 +618,17 @@ def plot_Station_forecast(forecast_df, fcstPeriod, graphpng, station, q1, q2, q3
 
 
 def writeout(prefix, p_matrix, corgrp_matrix, corr_df, lats, lons, outdir, config):
+    outfile = outdir + os.sep + prefix + '_correlation-maps.nc'
+    if os.path.exists(outfile): return 0
     os.makedirs(outdir, exist_ok=True)
     if int(config.get('plots', {}).get('corrmaps', 1)) == 1:
         corgrp_matrix[corgrp_matrix == -1] = 255
         corgrp_matrix[np.isnan(corgrp_matrix)] = 255
         # generate NETCDF
-        outfile = outdir + os.sep + prefix + '_correlation-maps.nc'
         output = Dataset(outfile, 'w', format='NETCDF4')
         output.description = 'P-Values and High-Correlation Basins [' + prefix + ']'
         output.comments = 'Created ' + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
-        output.source = 'SADC-CFTv' + config.get('version', '1.4.0')
+        output.source = 'SADC-CFTv' + config.get('Version', '1.4.1')
         lat = output.createDimension('lat', len(lats))
         lon = output.createDimension('lon', len(lons))
         T = output.createDimension('T', 1)
@@ -621,7 +636,7 @@ def writeout(prefix, p_matrix, corgrp_matrix, corr_df, lats, lons, outdir, confi
         latitudes = output.createVariable('lat', np.float32, ('lat',))
         longitudes = output.createVariable('lon', np.float32, ('lon',))
         basins = output.createVariable('basins', np.uint8, ('T', 'lat', 'lon'))
-        pvalues = output.createVariable('pvalues', np.float, ('T', 'lat', 'lon'))
+        pvalues = output.createVariable('pvalues', np.float32, ('T', 'lat', 'lon'))
         latitudes.units = 'degree_north'
         latitudes.axis = 'Y'
         latitudes.long_name = 'Latitude'
@@ -887,7 +902,7 @@ def forecast_pixel_unit(config, predictordict, predictant_data, fcstPeriod, algo
                 except:
                     continue
                 v = np.std(forecasts)
-                ratings[str(x + 1) + '_' + str(y + 1)] = (hit_score(forecasts, test_actual, t1, t2) * (m**2), v)
+                ratings[str(x + 1) + '_' + str(y + 1)] = ((hit_score(forecasts, test_actual, t1, t2)+1) * (m**2), v)
 
         combs = sorted(ratings.items(), key=lambda xx: xx[1][0], reverse=True)
         v = np.std(np.ravel(test_actual[test_notnull]))
@@ -1158,7 +1173,7 @@ def forecast_unit(config, predictordict, predictantdict, fcstPeriod, algorithm, 
                 except:
                     continue
                 v = np.std(forecasts)
-                ratings[str(x + 1) + '_' + str(y + 1)] = (hit_score(forecasts, test_actual, t1, t2) * (m**2), v)
+                ratings[str(x + 1) + '_' + str(y + 1)] = ((hit_score(forecasts, test_actual, t1, t2)+1) * (m**2), v)
 
         combs = sorted(ratings.items(), key=lambda xx: xx[1][0], reverse=True)
         v = np.std(np.ravel(test_actual[test_notnull]))
@@ -1369,7 +1384,7 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         # corr = (p_matrix <= config['PValue']) & (abs(r_matrix) >= 0.5)
         corr = (p_matrix <= config['PValue']) & (p_matrix != 0)
         if not corr.any():
-            return 0
+            continue
         corr_coords = list(zip(lons2d[corr], lats2d[corr]))
         # create correlation basins
         corgrp_matrix = np.zeros((nrowssst, ncolssst)) * np.nan
@@ -1497,7 +1512,7 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                         except:
                             continue
                         v = np.std(forecasts)
-                        ratings[str(x + 1) + '_' + str(y + 1)] = (hit_score(forecasts, test_actual, t1, t2) * (m**2), v)
+                        ratings[str(x + 1) + '_' + str(y + 1)] = ((hit_score(forecasts, test_actual, t1, t2)+1) * (m**2), v)
 
                 combs = sorted(ratings.items(), key=lambda xx: xx[1][0], reverse=True)
                 v = np.std(np.ravel(test_actual[test_notnull]))

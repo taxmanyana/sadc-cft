@@ -2,6 +2,7 @@
 #
 # This script downloads and compiles source code of dependencies to install the CFT
 #
+echo
 echo "installing SADC CFT..."
 echo
 SCRIPT=$(readlink -f $0)
@@ -19,18 +20,11 @@ cd $cwd
 mkdir -p source 
 if [ -d source ]; then
   cd $cwd/source
-  wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.4.tar.bz2 -c
-  lib=$(find ./ -maxdepth 1 -name "openmpi-*" -type f | tail -1)
-  if [ -n $lib ]; then
-    echo
-    echo "installing ${lib##*/}..."
-    tar xf $lib
-    cd $(find ./ -maxdepth 1 -name "openmpi-*" -type d)
-    ./configure --prefix=${PYTHONPATH}
-    make install -j4
+  wget https://www.openssl.org/source/openssl-3.0.0-alpha13.tar.gz -c
+  if [[ $? -ne 0 ]]; then
+     echo "error, could not download openssl. check URL in the script and update if necessary"
+     exit
   fi
-  cd $cwd/source
-  wget https://www.openssl.org/source/openssl-3.0.0-alpha6.tar.gz -c
   lib=$(find ./ -maxdepth 1 -name "openssl-*" -type f | tail -1)
   if [ -n $lib ]; then
     echo
@@ -40,9 +34,34 @@ if [ -d source ]; then
     ./config --prefix=${PYTHONPATH} --openssldir=${PYTHONPATH}
     make -j4
     make install -j4
+    if [[ $? -ne 0 ]]; then
+       echo "error, openssl could not be installed"
+       exit
+    fi
   fi
+  echo
+  cd $cwd/source
+  wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.4.tar.bz2 --no-check-certificate -c
+  if [[ $? -ne 0 ]]; then
+     echo "error, could not download openmpi. check URL in the script and update if necessary"
+     exit
+  fi
+  lib=$(find ./ -maxdepth 1 -name "openmpi-*" -type f | tail -1)
+  if [ -n $lib ]; then
+    echo
+    echo "installing ${lib##*/}..."
+    tar xf $lib
+    cd $(find ./ -maxdepth 1 -name "openmpi-*" -type d)
+    ./configure --prefix=${PYTHONPATH}
+    make install -j4
+  fi
+  echo
   cd $cwd/source
   wget https://gcc.gnu.org/pub/libffi/libffi-3.3.tar.gz -c
+  if [[ $? -ne 0 ]]; then
+     echo "error, could not download libffi. check URL in the script and update if necessary"
+     exit
+  fi
   lib=$(find ./ -maxdepth 1 -name "libffi-*" -type f | tail -1)
   if [ -n $lib ]; then
     echo
@@ -52,8 +71,13 @@ if [ -d source ]; then
     ./configure --prefix=${PYTHONPATH}
     make install -j4
   fi
+  echo
   cd $cwd/source
   wget https://deac-fra.dl.sourceforge.net/project/lzmautils/xz-5.2.5.tar.xz -c
+  if [[ $? -ne 0 ]]; then
+     echo "error, could not download xz. check URL in the script and update if necessary"
+     exit
+  fi
   lib=$(find ./ -maxdepth 1 -name "xz-*" -type f | tail -1)
   if [ -n $lib ]; then
     echo
@@ -63,8 +87,13 @@ if [ -d source ]; then
     ./configure --prefix=${PYTHONPATH}
     make install -j4
   fi
+  echo
   cd $cwd/source
   wget https://zlib.net/zlib-1.2.11.tar.gz -c
+  if [[ $? -ne 0 ]]; then
+     echo "error, could not download zlib. check URL in the script and update if necessary"
+     exit
+  fi
   lib=$(find ./ -maxdepth 1 -name "zlib-*" -type f | tail -1)
   if [ -n $lib ]; then
     echo
@@ -74,8 +103,13 @@ if [ -d source ]; then
     ./configure --prefix=${PYTHONPATH}
     make install -j4
   fi
+  echo
   cd $cwd/source
   wget https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz --no-check-certificate -c
+  if [[ $? -ne 0 ]]; then
+     echo "error, could not download bzip2. check URL in the script and update if necessary"
+     exit
+  fi
   lib=$(find ./ -maxdepth 1 -name "bzip2-*" -type f | tail -1)
   if [ -n $lib ]; then
     echo
@@ -92,8 +126,13 @@ if [ -d source ]; then
     cd ${PYTHONPATH}/lib
     $makelink
   fi
+  echo
   cd $cwd/source
   wget https://www.python.org/ftp/python/3.8.5/Python-3.8.5.tar.xz -c
+  if [[ $? -ne 0 ]]; then
+     echo "error, could not download Python. check URL in the script and update if necessary"
+     exit
+  fi
   lib=$(find ./ -maxdepth 1 -name "Python-*" -type f | tail -1)
   if [ -n $lib ]; then
     echo
@@ -128,7 +167,7 @@ echo
 echo "creating environmental variables file"
 echo "export PATH=${PYTHONPATH}/bin:$PATH" > ${PYTHONPATH}/bin/activate
 echo "export LD_LIBRARY_PATH=${PYTHONPATH}/lib:$LD_LIBRARY_PATH" >> ${PYTHONPATH}/bin/activate
-echo "export LD_RUN_PATH=${PYTHONPATH}/lib:${PYTHONPATH}/lib64" >> ${PYTHONPATH}/bin/activate
+echo "export LD_RUN_PATH=${PYTHONPATH}/lib" >> ${PYTHONPATH}/bin/activate
 echo
 echo "creating desktop shortcut"
 echo "#!/usr/bin/env xdg-open" > $cwd/CFT.desktop
@@ -143,25 +182,5 @@ echo "Icon=${cwd}/sadc.ico" >> $cwd/CFT.desktop
 chmod 777 $cwd/CFT.desktop
 chmod +x ${cwd}/cft_ubuntu.sh
 [ -d ~/Desktop ]  && cp $cwd/CFT.desktop ~/Desktop/
+echo "installation completed."
 
-python3 <<END
-from multiprocessing import Pool, cpu_count
-from netCDF4 import Dataset
-import geojson, json
-import numpy as np
-import pandas as pd
-from descartes import PolygonPatch
-from scipy.stats import pearsonr
-from shapely.geometry import shape, Point
-from sklearn import linear_model, cluster
-from sklearn.neural_network import MLPRegressor
-from sklearn.preprocessing import StandardScaler
-import matplotlib
-import statsmodels.api as sm
-END
-if [ $? -eq 0 ]; then
-   echo "installation successfully completed"
-   rm -fr source
-else
-   echo "something went wrong during the installation :-("
-fi

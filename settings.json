@@ -1,34 +1,41 @@
 {
-    "version": "1.4.0",
-    "outDir": "C:/Users/Moitlhobogi/Documents/projects/CFT/outputs",
+    "Version": "1.4.1",
+    "outDir": "C:/Users/Moitlhobogi/Documents/projects/CFT/dataandpredictors",
     "predictorList": [
-        "C:/Users/Moitlhobogi/Documents/projects/CFT/sadc_cft-1.4.0/data/GPH850_Jul_1960_2020.nc",
-        "C:/Users/Moitlhobogi/Documents/projects/CFT/sadc_cft-1.4.0/data/SST_Jul_1960_2020.nc"
+        "C:/Users/Moitlhobogi/Documents/projects/CFT/dataandpredictors/GPZ500Jul.nc",
+        "C:/Users/Moitlhobogi/Documents/projects/CFT/dataandpredictors/GPZ850Jul.nc",
+        "C:/Users/Moitlhobogi/Documents/projects/CFT/dataandpredictors/sst.nc"
     ],
     "predictantList": [
-        "C:/Users/Moitlhobogi/Documents/projects/CFT/sadc_cft-1.4.0/data/Lesotho_cru_ts4.04.1901.2019.pre.dat.nc"
+        "C:/Users/Moitlhobogi/Documents/projects/CFT/dataandpredictors/Sarcof Rainfall Data CFT few.csv"
     ],
     "predictantMissingValue": -9999,
-    "predictantattr": "pre",
-    "fcstPeriodStartMonth": "Oct",
+    "predictantattr": "",
+    "fcstPeriodStartMonth": "Dec",
     "fcstPeriodLength": "3month",
-    "trainStartYear": 1971,
-    "trainEndYear": 2000,
+    "trainStartYear": 1981,
+    "trainEndYear": 2010,
     "predictorMonth": "Jul",
     "PValue": 0.05,
     "stepwisePvalue": 0.3,
     "minHSscore": 50,
     "PODfilter": 1,
-    "inputFormat": "NetCDF",
+    "inputFormat": "CSV",
     "composition": "Sum",
     "zonevector": {
-        "file": "",
-        "ID": -1,
-        "attr": []
+        "file": "C:/Users/Moitlhobogi/Documents/projects/CFT/dataandpredictors/DJF.geojson",
+        "ID": 1,
+        "attr": [
+            "PRIMARY",
+            "PRIM_ID",
+            "jfm",
+            "ID"
+        ]
     },
-    "fcstyear": 2020,
+    "fcstyear": 2021,
     "algorithms": [
-        "LR"
+        "LR",
+        "MLP"
     ],
     "basinbounds": {
         "minlat": -90.0,

@@ -79,3 +79,12 @@ Feature: Desktop icon for quick access
 Update: User can specify (when running on terminal) which settings file to use
 Update: Improved selection of MLP model based on both HitScore and R-Square
 
+v1.4.1 - 21 March 2021
+Bugfix: Corrected bug in selection of MLP model which results in no MLP outputs for some inputs
+Bugfix: Fix 'unsupported type for timedelta' error
+Bugfix: Updated debug.bat to point to correct cft script
+Bugfix: Fix 'permission denied' error that occurs when writing correlation maps (will not create if already exists)
+
+v1.4.2 - 22 August 2021
+Bugfix: Corrected bug where remaning predictors are skipped for a station when there is no correlation with the first predictor
+Feature: Generate CSV of selected members which meet HS and POD filtering
