@@ -60,9 +60,22 @@ Feature: Add options 'minHSscore' parameter in the settings file to allow adjust
 Update: Update the styles for station and zone forecast 
 Update: MLP maximum iterations (max_iter) set to 3000 
 
-v1.3.3 - 13 August 202
+v1.3.3 - 13 August 2020
 Feature: Filter out members whose probability of detection for forecasted class is lower than for the other classes
 Feature: Include legends in the final forecast PNGs
 Feature: Add average skill for the station/zone (based on the average HS of eligible members), include average HS in the plot
 Update: Use median instead of mean
 Bugfix: Correct error resulting from station IDs being numbers
+
+v1.3.4 - 15 August 2020
+Feature: Add Linux (Ubuntu) support (installation script and launcher script)
+Feature: Add option 'PODfilter' for enabling or disabling filtering by POD
+Bugfix: Correct error experienced during computation of scores
+
+v1.4.0 - 14 September 2020
+Feature: MPI version for computer cluster support 
+Feature: Support for gridded (NetCDF) predictant
+Feature: Desktop icon for quick access
+Update: User can specify (when running on terminal) which settings file to use
+Update: Improved selection of MLP model based on both HitScore and R-Square
+

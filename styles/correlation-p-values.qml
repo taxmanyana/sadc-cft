@@ -1,10 +1,11 @@
 <!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
 <qgis version="2.18.17" minimumScale="inf" maximumScale="1e+08" hasScaleBasedVisibilityFlag="0">
   <pipe>
-    <rasterrenderer opacity="1" alphaBand="-1" classificationMax="0.999002" classificationMinMaxOrigin="CumulativeCutFullExtentEstimated" band="1" classificationMin="0.00753347" type="singlebandpseudocolor">
+    <rasterrenderer opacity="1" alphaBand="0" classificationMax="0.999002" classificationMinMaxOrigin="CumulativeCutFullExtentEstimated" band="1" classificationMin="0.00753347" type="singlebandpseudocolor">
       <rasterTransparency/>
       <rastershader>
         <colorrampshader colorRampType="INTERPOLATED" clip="0">
+          <item alpha="255" value="0" label="0" color="#ffffff"/>
           <item alpha="255" value="0.02" label="0.02" color="#2b83ba"/>
           <item alpha="255" value="0.05" label="0.05" color="#abdda4"/>
           <item alpha="255" value="0.1" label="0.1" color="#ffffbf"/>

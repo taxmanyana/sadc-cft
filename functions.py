@@ -17,11 +17,12 @@ from shapely.geometry import shape, Point
 from descartes import PolygonPatch
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
-from osgeo import gdal
+from netCDF4 import Dataset
+from dateutil.relativedelta import relativedelta
+from datetime import datetime
 import warnings
 import numpy as np
 import geojson, json
-
 SSTclusterSize=1200.
 kms_per_radian = 6371.0088
 epsilon = SSTclusterSize*1.0 / kms_per_radian
@@ -34,13 +35,18 @@ month_dict = {'jan':'01','feb':'02','mar':'03','apr':'04','may':'05','jun':'06',
 proj='GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],' \
      'AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],' \
      'AUTHORITY["EPSG","4326"]]'
+season_start_month = {'Jan': 'JFM', 'Feb': 'FMA', 'Mar': 'MAM', 'Apr': 'AMJ', 'May': 'MJJ', 'Jun': 'JJA', 'Jul': 'JAS',
+                     'Aug': 'ASO', 'Sep': 'SON', 'Oct': 'OND', 'Nov': 'NDJ', 'Dec': 'DJF'}
+season_months = {'JFM': ['Jan', 'Feb', 'Mar'], 'FMA': ['Feb', 'Mar', 'Apr'], 'MAM': ['Mar', 'Apr', 'May'],
+                 'AMJ': ['Apr', 'May', 'Jun'], 'MJJ': ['May', 'Jun', 'Jul'], 'JJA': ['Jun', 'Jul', 'Aug'],
+                 'JAS': ['Jul', 'Aug', 'Sep'], 'ASO': ['Aug', 'Sep', 'Oct'], 'SON': ['Sep', 'Oct', 'Nov'],
+                 'OND': ['Oct', 'Nov', 'Dec'], 'NDJ': ['Nov', 'Dec', 'Jan'], 'DJF': ['Dec', 'Jan', 'Feb']}
 
-driver = gdal.GetDriverByName('GTiff')
 
 # --- functions ---
 
 def rename(string):
-    return re.sub("[^0-9a-zA-Z]+", " ", str(string))
+    return re.sub("[^0-9a-zA-Z]+", " ", str(string)).strip()
 
 def integer(x):
     if np.isfinite(x):
@@ -48,51 +54,140 @@ def integer(x):
     else:
         return np.nan
 
+class netcdf_data:
+    # NB: NetCDF reads from the bottom going up
+    def __init__(self, file, param=None, level=0):
+        self.file = file
+        self.param = param
+        self.level = level
+        self.dataset = Dataset(file)
+        self.keys = self.dataset.variables.keys()
+        self.dimensions = self.dataset.dimensions.keys()
+        if 'T' in self.keys:
+            self.tpar = 'T'
+        elif 'time' in self.keys:
+            self.tpar = 'time'
+        if 'X' in self.keys:
+            self.X = 'X'
+        elif 'lon' in self.keys:
+            self.X = 'lon'
+        if 'Y' in self.keys:
+            self.Y = 'Y'
+        elif 'lat' in self.keys:
+            self.Y = 'lat'
+        self.tunits = str(self.dataset.variables[self.tpar].units).split(" since ", 1)[0]
+        ref_date = str(self.dataset.variables[self.tpar].units).split(" since ", 1)[1]
+        self.ref_date = datetime.strptime(ref_date, '%Y-%m-%d')
+        self.lons = self.dataset.variables[self.X][:]
+        self.lats = self.dataset.variables[self.Y][:]
+        if param is None:
+            self.param = self.var()
+        if self.param not in self.keys:
+            print(param, 'not available in the dataset')
+
+
+    def var(self):
+        keys = []
+        for key in self.keys:
+            keys.append(key)
+        ref_keys = ['Y', 'X', 'Z', 'T', 'zlev', 'time', 'lon', 'lat']
+        for x in reversed(range(len(keys))):
+            if keys[x] not in ref_keys:
+                return keys[x]
+        return None
+
+    def tslice(self, x=None, y=None):
+        if x is None and y is None:
+            if len(self.dimensions) == 3:
+                data = self.dataset.variables[self.param][:]
+            elif len(self.dimensions) == 4:
+                data = self.dataset.variables[self.param][:, self.level]
+            else:
+                return None
+            try:
+                data[data.mask] = np.nan
+                return data
+            except:
+                return data
+
+        if x is not None and y is not None:
+            if len(self.dimensions) == 3:
+                data = self.dataset.variables[self.param][:, x, y]
+            elif len(self.dimensions) == 4:
+                data = self.dataset.variables[self.param][:, self.level, x, y]
+            else:
+                return None
+            try:
+                data[data.mask] = np.nan
+                return list(data)
+            except:
+                return list(data)
+
+    def times(self):
+        timearr = []
+        tarr = self.dataset.variables[self.tpar][:]
+        for x in range(len(tarr)):
+            if self.tunits == 'months':
+                timearr.append((self.ref_date + relativedelta(months=+int(tarr[x]))).strftime("%Y%m%d"))
+            if self.tunits == 'days':
+                timearr.append((self.ref_date + relativedelta(days=+tarr[x])).strftime("%Y%m%d"))
+        return timearr
+
+    def years(self):
+        return sorted(list(set([x[:4] for x in self.times()])))
+
+    def months(self):
+        return sorted(list(set([x[:6] for x in self.times()])))
+
+    def shape(self):
+        return(len(self.lats), len(self.lons))
+
 
 def season_cumulation(dfm, year, season):
     nyear = year + 1
     try:
         if season == 'JFM':
-            if np.array(np.isfinite(dfm.loc[[year], 'Jan':'Mar'])).all(): return float(round(
+            if ~np.isnan(np.ravel(dfm.loc[[year], 'Jan':'Mar']).astype(float)).any(): return float(round(
                 dfm.loc[[year], 'Jan':'Mar'].sum(axis=1), 1))
         if season == 'FMA':
-            if np.array(np.isfinite(dfm.loc[[year], 'Feb':'Apr'])).all(): return float(round(
+            if ~np.isnan(np.ravel(dfm.loc[[year], 'Feb':'Apr']).astype(float)).any(): return float(round(
                 dfm.loc[[year], 'Feb':'Apr'].sum(axis=1), 1))
         if season == 'MAM':
-            if np.array(np.isfinite(dfm.loc[[year], 'Mar':'May'])).all(): return float(round(
+            if ~np.isnan(np.ravel(dfm.loc[[year], 'Mar':'May']).astype(float)).any(): return float(round(
                 dfm.loc[[year], 'Mar':'May'].sum(axis=1), 1))
         if season == 'AMJ':
-            if np.array(np.isfinite(dfm.loc[[year], 'Apr':'Jun'])).all(): return float(round(
+            if ~np.isnan(np.ravel(dfm.loc[[year], 'Apr':'Jun']).astype(float)).any(): return float(round(
                 dfm.loc[[year], 'Apr':'Jun'].sum(axis=1), 1))
         if season == 'MJJ':
-            if np.array(np.isfinite(dfm.loc[[year], 'May':'Jul'])).all(): return float(round(
+            if ~np.isnan(np.ravel(dfm.loc[[year], 'May':'Jul']).astype(float)).any(): return float(round(
                 dfm.loc[[year], 'May':'Jul'].sum(axis=1), 1))
         if season == 'JJA':
-            if np.array(np.isfinite(dfm.loc[[year], 'Jun':'Aug'])).all(): return float(round(
+            if ~np.isnan(np.ravel(dfm.loc[[year], 'Jun':'Aug']).astype(float)).any(): return float(round(
                 dfm.loc[[year], 'Jun':'Aug'].sum(axis=1), 1))
         if season == 'JAS':
-            if np.array(np.isfinite(dfm.loc[[year], 'Jul':'Sep'])).all(): return float(round(
+            if ~np.isnan(np.ravel(dfm.loc[[year], 'Jul':'Sep']).astype(float)).any(): return float(round(
                 dfm.loc[[year], 'Jul':'Sep'].sum(axis=1), 1))
         if season == 'ASO':
-            if np.array(np.isfinite(dfm.loc[[year], 'Aug':'Oct'])).all(): return float(round(
+            if ~np.isnan(np.ravel(dfm.loc[[year], 'Aug':'Oct']).astype(float)).any(): return float(round(
                 dfm.loc[[year], 'Aug':'Oct'].sum(axis=1), 1))
         if season == 'SON':
-            if np.array(np.isfinite(dfm.loc[[year], 'Sep':'Nov'])).all(): return float(round(
+            if ~np.isnan(np.ravel(dfm.loc[[year], 'Sep':'Nov']).astype(float)).any(): return float(round(
                 dfm.loc[[year], 'Sep':'Nov'].sum(axis=1), 1))
         if season == 'OND':
-            if np.array(np.isfinite(dfm.loc[[year], 'Oct':'Dec'])).all(): return float(round(
+            if ~np.isnan(np.ravel(dfm.loc[[year], 'Oct':'Dec']).astype(float)).any(): return float(round(
                 dfm.loc[[year], 'Oct':'Dec'].sum(axis=1), 1))
         if season == 'NDJ':
-            p1 = np.array(np.isfinite(dfm.loc[[year], 'Nov':'Dec'])).all()
-            p2 = np.array(np.isfinite(dfm.loc[[nyear], 'Jan'])).all()
+            p1 = ~np.isnan(np.ravel(dfm.loc[[year], 'Nov':'Dec']).astype(float)).any()
+            p2 = ~np.isnan(np.ravel(dfm.loc[[nyear], 'Jan']).astype(float)).any()
             if p1 and p2: return round(float(dfm.loc[[year], 'Nov':'Dec'].sum(axis=1)) + float(dfm.loc[[nyear], 'Jan']),
                                        1)
         if season == 'DJF':
-            p1 = np.array(np.isfinite(dfm.loc[[year], 'Dec'])).all()
-            p2 = np.array(np.isfinite(dfm.loc[[nyear], 'Jan':'Feb'])).all()
+            p1 = ~np.isnan(np.ravel(dfm.loc[[year], 'Dec']).astype(float)).any()
+            p2 = ~np.isnan(np.ravel(dfm.loc[[nyear], 'Jan':'Feb']).astype(float)).any()
             if p1 and p2: return round(float(dfm.loc[[year], 'Dec']) + float(dfm.loc[[nyear], 'Jan':'Feb'].sum(axis=1)),
                                        1)
-    except KeyError:
+        return
+    except:
         return
 
 
@@ -107,7 +202,7 @@ def stepwise_selection(X, y,
         changed = False
         # forward step
         excluded = list(set(X.columns) - set(included))
-        new_pval = pd.Series(index=excluded)
+        new_pval = pd.Series(index=excluded, dtype=float)
         for new_column in excluded:
             model = sm.OLS(y, sm.add_constant(pd.DataFrame(X[included + [new_column]]))).fit()
             new_pval[new_column] = model.pvalues[new_column]
@@ -139,33 +234,34 @@ def season_average(dfm,year,season):
   nyear=year+1
   try:
     if season=='JFM':
-      if np.array(np.isfinite(dfm.loc[[year],'Jan':'Mar'])).all(): return float(round(dfm.loc[[year],'Jan':'Mar'].mean(axis=1),1))
+      if ~np.isnan(np.ravel(dfm.loc[[year],'Jan':'Mar']).astype(float)).any(): return float(round(dfm.loc[[year],'Jan':'Mar'].mean(axis=1),1))
     if season=='FMA':
-      if np.array(np.isfinite(dfm.loc[[year],'Feb':'Apr'])).all(): return float(round(dfm.loc[[year],'Feb':'Apr'].mean(axis=1),1))
+      if ~np.isnan(np.ravel(dfm.loc[[year],'Feb':'Apr']).astype(float)).any(): return float(round(dfm.loc[[year],'Feb':'Apr'].mean(axis=1),1))
     if season=='MAM':
-      if np.array(np.isfinite(dfm.loc[[year],'Mar':'May'])).all(): return float(round(dfm.loc[[year],'Mar':'May'].mean(axis=1),1))
+      if ~np.isnan(np.ravel(dfm.loc[[year],'Mar':'May']).astype(float)).any(): return float(round(dfm.loc[[year],'Mar':'May'].mean(axis=1),1))
     if season=='AMJ':
-      if np.array(np.isfinite(dfm.loc[[year],'Apr':'Jun'])).all(): return float(round(dfm.loc[[year],'Apr':'Jun'].mean(axis=1),1))
+      if ~np.isnan(np.ravel(dfm.loc[[year],'Apr':'Jun']).astype(float)).any(): return float(round(dfm.loc[[year],'Apr':'Jun'].mean(axis=1),1))
     if season=='MJJ':
-      if np.array(np.isfinite(dfm.loc[[year],'May':'Jul'])).all(): return float(round(dfm.loc[[year],'May':'Jul'].mean(axis=1),1))
+      if ~np.isnan(np.ravel(dfm.loc[[year],'May':'Jul']).astype(float)).any(): return float(round(dfm.loc[[year],'May':'Jul'].mean(axis=1),1))
     if season=='JJA':
-      if np.array(np.isfinite(dfm.loc[[year],'Jun':'Aug'])).all(): return float(round(dfm.loc[[year],'Jun':'Aug'].mean(axis=1),1))
+      if ~np.isnan(np.ravel(dfm.loc[[year],'Jun':'Aug']).astype(float)).any(): return float(round(dfm.loc[[year],'Jun':'Aug'].mean(axis=1),1))
     if season=='JAS':
-      if np.array(np.isfinite(dfm.loc[[year],'Jul':'Sep'])).all(): return float(round(dfm.loc[[year],'Jul':'Sep'].mean(axis=1),1))
+      if ~np.isnan(np.ravel(dfm.loc[[year],'Jul':'Sep']).astype(float)).any(): return float(round(dfm.loc[[year],'Jul':'Sep'].mean(axis=1),1))
     if season=='ASO':
-      if np.array(np.isfinite(dfm.loc[[year],'Aug':'Oct'])).all(): return float(round(dfm.loc[[year],'Aug':'Oct'].mean(axis=1),1))
+      if ~np.isnan(np.ravel(dfm.loc[[year],'Aug':'Oct']).astype(float)).any(): return float(round(dfm.loc[[year],'Aug':'Oct'].mean(axis=1),1))
     if season=='SON':
-      if np.array(np.isfinite(dfm.loc[[year],'Sep':'Nov'])).all(): return float(round(dfm.loc[[year],'Sep':'Nov'].mean(axis=1),1))
+      if ~np.isnan(np.ravel(dfm.loc[[year],'Sep':'Nov']).astype(float)).any(): return float(round(dfm.loc[[year],'Sep':'Nov'].mean(axis=1),1))
     if season=='OND':
-      if np.array(np.isfinite(dfm.loc[[year],'Oct':'Dec'])).all(): return float(round(dfm.loc[[year],'Oct':'Dec'].mean(axis=1),1))
+      if ~np.isnan(np.ravel(dfm.loc[[year],'Oct':'Dec']).astype(float)).any(): return float(round(dfm.loc[[year],'Oct':'Dec'].mean(axis=1),1))
     if season=='NDJ':
-        p1=np.array(np.isfinite(dfm.loc[[year],'Nov':'Dec'])).all()
-        p2=np.array(np.isfinite(dfm.loc[[nyear],'Jan'])).all()
+        p1=~np.isnan(np.ravel(dfm.loc[[year],'Nov':'Dec']).astype(float)).any()
+        p2=~np.isnan(np.ravel(dfm.loc[[nyear],'Jan']).astype(float)).any()
         if p1 and p2: return round((float(dfm.loc[[year],'Nov':'Dec'].sum(axis=1))+float(dfm.loc[[nyear],'Jan']))/3.,1)
     if season=='DJF':
-        p1=np.array(np.isfinite(dfm.loc[[year],'Dec'])).all()
-        p2=np.array(np.isfinite(dfm.loc[[nyear],'Jan':'Feb'])).all()
+        p1=~np.isnan(np.ravel(dfm.loc[[year],'Dec']).astype(float)).any()
+        p2=~np.isnan(np.ravel(dfm.loc[[nyear],'Jan':'Feb']).astype(float)).any()
         if p1 and p2: return round((float(dfm.loc[[year],'Dec'])+float(dfm.loc[[nyear],'Jan':'Feb'].sum(axis=1)))/3.,1)
+    return
   except:
     return
 
@@ -322,6 +418,18 @@ def weighted_average(group):
    wavg = np.average(fclass,weights=HS)
    return wavg, n4, n3, n2, n1
 
+def weighted_average_fcst(group):
+   HS = group['HS']
+   fclass = group['class']
+   fcst = group['fcst']
+   t3 = int(np.ravel(group['t3'])[0]+0.5)
+   t2 = int(np.ravel(group['t2'])[0]+0.5)
+   t1 = int(np.ravel(group['t1'])[0]+0.5)
+   wavgclass = int(np.average(fclass, weights=HS)+0.5)
+   avgfcst = int(np.mean(fcst)+0.5)
+   avgHS = int(np.mean(HS)+0.5)
+   return t1, t2, t3, avgfcst, avgHS, wavgclass
+
 def convert(seconds):
     seconds = seconds % (24 * 3600)
     hour = seconds // 3600
@@ -371,9 +479,15 @@ def model_skill(fcst_df, lim1, lim2):
     cgtable_df['FCST ABOVE'] = [A13, A23, A33, O]
     cgtable_df['Total'] = [J, K, L, T]
     if T != 0:
-        Factor = (J*M + K*N + L*O) / T
-        HS = integer(100 * (A11 + A22 + A33) / T)
-        HSS = (A11 + A22 + A33 - Factor) / (T - Factor)
+        try:
+            HS = integer(100 * (A11 + A22 + A33) / T)
+        except:
+            HS = np.nan
+        try:
+            Factor = (J*M + K*N + L*O) / T
+            HSS = (A11 + A22 + A33 - Factor) / (T - Factor)
+        except:
+            HSS = np.nan
     if A11 != 0: POD_below = integer(100 * A11 / M)
     if A22 != 0: POD_normal = integer(100 * A22 / N)
     if A33 != 0: POD_above = integer(100 * A33 / O)
@@ -394,6 +508,41 @@ def model_skill(fcst_df, lim1, lim2):
     except:
         PA = np.nan
     return HS, HSS, POD_below, POD_normal, POD_above, FA_below, FA_normal, FA_above, cgtable_df, PB, PN, PA
+
+
+def hit_score(fcst, obs, lim1, lim2):
+    if len(fcst) != len(obs):
+        print('fcst and obs length not equal')
+        return 0
+    obs = np.sort(np.array(obs))
+    fcst = np.sort(np.array(fcst))
+    below = obs <= lim1
+    normal = (obs > lim1) & (obs <= lim2)
+    above = obs > lim2
+    A11 = sum(fcst[below] <= lim1)
+    A12 = sum((fcst[below] > lim1) & (fcst[below] <= lim2))
+    A13 = sum(fcst[below] > lim2)
+    A21 = sum(fcst[normal] <= lim1)
+    A22 = sum((fcst[normal] > lim1) & (fcst[normal] <= lim2))
+    A23 = sum(fcst[normal] > lim2)
+    A31 = sum(fcst[above] <= lim1)
+    A32 = sum((fcst[above] > lim1) & (fcst[above] <= lim2))
+    A33 = sum(fcst[above] > lim2)
+    M = A11 + A21 + A31
+    N = A12 + A22 + A32
+    O = A13 + A23 + A33
+    T = M + N + O
+    if T != 0:
+        try:
+            HS = 100 * (A11 + A22 + A33) / T
+        except:
+            return 0
+        if np.isfinite(HS):
+            return int(HS+0.5)
+        else:
+            return 0
+    return 0
+
 
 
 def good_POD(string, fclass):
@@ -420,7 +569,8 @@ def plot_Station_forecast(forecast_df, fcstPeriod, graphpng, station, q1, q2, q3
     W = 1000
     H = 600
     colors = ['#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe',
-              '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080']
+              '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075',
+              '#808080', '#dcbeff']
     graphs = list(forecast_df.columns)
     indx = graphs.index('Year')
     graphs.pop(indx)
@@ -446,43 +596,51 @@ def plot_Station_forecast(forecast_df, fcstPeriod, graphpng, station, q1, q2, q3
         plt.plot(np.array(forecast_df['Year']), np.array(forecast_df[graph]), color=colors[n], marker='+', label=graph, linewidth=0.7)
     plt.title('Actual ('+fcstPeriod+') vs Forecasts for '+station, fontsize=12)
     plt.legend(prop={'size': 6})
-    plt.xticks(list(forecast_df['Year']), [str(x) for x in list(forecast_df['Year'])], fontsize=8)
+    plt.xticks(list(forecast_df['Year']), [str(x) for x in list(forecast_df['Year'])], fontsize=8, rotation=90)
     plt.xlabel('Year', fontsize=12)
     plt.ylabel('Forecast', fontsize=12)
     plt.savefig(graphpng, bbox_inches = 'tight')
     plt.close(fig)
 
 
-def writeout(prefix, r_matrix, p_matrix, corgrp_matrix, corr_df, lats, lons, outdir, config):
+def writeout(prefix, p_matrix, corgrp_matrix, corr_df, lats, lons, outdir, config):
     os.makedirs(outdir, exist_ok=True)
     if int(config.get('plots', {}).get('corrmaps', 1)) == 1:
-        ncolssst = len(lons)
-        nrowssst = len(lats)
-        flats = lats[::-1]
-        nx = len(lons)
-        ny = len(flats)
-        xmin, ymin, xmax, ymax = [lons.min(), flats.min(), lons.max(), flats.max()]
-        xres = (xmax - xmin) / float(nx)
-        yres = (ymax - ymin) / float(ny)
-        geotransform = (xmin, xres, 0, ymax, 0, -yres)
-        # write p-matrix image
-        output = outdir + os.sep + prefix + '_correlation-p-values.tif'
-        dataset2 = driver.Create(output, ncolssst, nrowssst, eType=gdal.GDT_Float32)
-        dataset2.SetProjection(proj)
-        dataset2.SetGeoTransform(geotransform)
-        _ = dataset2.GetRasterBand(1).WriteArray(np.flip(p_matrix, axis=0))
-        dataset2.FlushCache()
-        dataset2 = None
-        # write correlation basins image
         corgrp_matrix[corgrp_matrix == -1] = 255
         corgrp_matrix[np.isnan(corgrp_matrix)] = 255
-        output = outdir + os.sep + prefix + '_correlation-basins.tif'
-        dataset3 = driver.Create(output, ncolssst, nrowssst, eType=gdal.GDT_Byte)
-        dataset3.SetProjection(proj)
-        dataset3.SetGeoTransform(geotransform)
-        _ = dataset3.GetRasterBand(1).WriteArray(np.flip(corgrp_matrix, axis=0))
-        dataset3.FlushCache()
-        dataset3 = None
+        # generate NETCDF
+        outfile = outdir + os.sep + prefix + '_correlation-maps.nc'
+        output = Dataset(outfile, 'w', format='NETCDF4')
+        output.description = 'P-Values and High-Correlation Basins [' + prefix + ']'
+        output.comments = 'Created ' + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
+        output.source = 'SADC-CFTv' + config.get('version', '1.4.0')
+        lat = output.createDimension('lat', len(lats))
+        lon = output.createDimension('lon', len(lons))
+        T = output.createDimension('T', 1)
+        initial_date = output.createVariable('target', np.float64, ('T',))
+        latitudes = output.createVariable('lat', np.float32, ('lat',))
+        longitudes = output.createVariable('lon', np.float32, ('lon',))
+        basins = output.createVariable('basins', np.uint8, ('T', 'lat', 'lon'))
+        pvalues = output.createVariable('pvalues', np.float, ('T', 'lat', 'lon'))
+        latitudes.units = 'degree_north'
+        latitudes.axis = 'Y'
+        latitudes.long_name = 'Latitude'
+        latitudes.standard_name = 'Latitude'
+        longitudes.units = 'degree_east'
+        longitudes.axis = 'X'
+        longitudes.long_name = 'Longitude'
+        longitudes.standard_name = 'Longitude'
+        initial_date.units = 'days since ' + str(config.get('trainStartYear')) + '-' + \
+                             str('{:02d}-'.format(months.index(config.get('predictorMonth')) + 1)) + '01 00:00:00'
+        initial_date.axis = 'T'
+        initial_date.calendar = 'standard'
+        initial_date.standard_name = 'time'
+        initial_date.long_name = 'training start date'
+        latitudes[:] = lats
+        longitudes[:] = lons
+        basins[:] = corgrp_matrix
+        pvalues[:] = p_matrix
+        output.close()
     # print correlation csv
     if int(config.get('plots', {}).get('corrcsvs', 1)) == 1:
         csv = outdir + os.sep + prefix + '_correlation-basin-avgs.csv'
@@ -533,6 +691,603 @@ def run_model_skill(fcst_df, fcstPeriod, fcstcol, r2score, training_actual):
     pmedian = round(np.median(observed_clean), 1)
     return q1, q2, q3, pmedian, fcst_precip, forecast_class, HS, str(Prob).replace(',', ':'), cgtable_df, skill_df
 
+def nc_unit_split(config, predictordict, fcstPeriod, comb):
+    point, pr, al = comb
+    algorithm = config.get('algorithms')[al]
+    predictor = predictordict[list(predictordict.keys())[pr]]
+    predictor['Name'] = list(predictordict.keys())[pr]
+    predictant_data = netcdf_data(config.get('predictantList')[0], param=config.get('predictantattr'))
+    return forecast_pixel_unit(config, predictor, predictant_data, fcstPeriod, algorithm, point)
+
+def forecast_pixel_unit(config, predictordict, predictant_data, fcstPeriod, algorithm, point):
+    x, y = point
+    predictorName = predictordict.get('Name')
+    input_data = predictant_data.tslice(x=x, y=y)
+    times = predictant_data.times()
+    trainStartYear = int(config['trainStartYear'])
+    trainEndYear = int(config['trainEndYear'])
+    fcstYear = int(config['fcstyear'])
+    years = list(range(trainStartYear, fcstYear + 1))
+    trainingYears = [yr for yr in range(trainStartYear, trainEndYear + 1)]
+    nyears = len(trainingYears)
+    point_season = pd.DataFrame(columns=['Year', fcstPeriod])
+    point_season['Year'] = years
+    point_season.set_index('Year', inplace=True)
+    if config.get('fcstPeriodLength', '3month') != '3month':
+        for x in range(len(times)):
+            year = int(times[x][:4])
+            mon = times[x][4:6]
+            month = datetime.strptime(mon, '%m').strftime('%b')
+            if (year in years) and (month == fcstPeriod):
+                point_season.loc[[year], fcstPeriod] = input_data[x]
+    elif config.get('fcstPeriodLength', '3month') == '3month':
+        columns = season_months[fcstPeriod][:]
+        columns.insert(0, 'Year')
+        point_data = pd.DataFrame(columns=columns)
+        point_data['Year'] = years
+        point_data.set_index('Year', inplace=True)
+        for x in range(len(times)):
+            year = int(times[x][:4])
+            mon = times[x][4:6]
+            month = datetime.strptime(mon, '%m').strftime('%b')
+            if (year in years) and (month in season_months[fcstPeriod]):
+                point_data.loc[[year], month] = input_data[x]
+        for year in years:
+            if config['composition'] == "Sum":
+                point_season.loc[[year], fcstPeriod] = season_cumulation(point_data, year, fcstPeriod)
+            else:
+                point_season.loc[[year], fcstPeriod] = season_average(point_data, year, fcstPeriod)
+    forecastdf = pd.DataFrame(columns=['Predictor', 'Algorithm', 'Point', 't1', 't2', 't3',
+                                       'median', 'fcst', 'class', 'r2score', 'HS', 'Prob'])
+
+    sst_arr = predictordict['data']
+
+    predictant = np.asarray(point_season, dtype=float).reshape(-1, )
+    training_actual = predictant[:len(trainingYears)]
+    test_actual = predictant[len(trainingYears):]
+    test_notnull = np.isfinite(test_actual)
+    if (len(training_actual[np.isfinite(training_actual)]) < 6) or (len(test_actual[np.isfinite(test_actual)]) < 2):
+        return None
+
+    # compute basins
+    SSTclusterSize = 1000.
+    trainPredictant = predictant[:nyears]
+    trainSST = sst_arr[:nyears]
+    pnotnull = np.isfinite(trainPredictant)
+    nyearssst, nrowssst, ncolssst = sst_arr.shape
+    yearssst = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
+    lons2d, lats2d = np.meshgrid(predictordict['lons'], predictordict['lats'])
+    # calculate correlation
+    r_matrix = np.zeros((nrowssst, ncolssst))
+    p_matrix = np.zeros((nrowssst, ncolssst))
+    # calculate correlation
+    for row in range(nrowssst):
+        for col in range(ncolssst):
+            sstvals = np.array(trainSST[:, row][:, col], dtype=float)
+            warnings.filterwarnings('error')
+            try:
+                notnull = pnotnull & np.isfinite(sstvals)
+                r_matrix[row][col], p_matrix[row][col] = pearsonr(trainPredictant[notnull], sstvals[notnull])
+            except:
+                pass
+    # corr = (p_matrix <= config['PValue']) & (abs(r_matrix) >= 0.5)
+    # corr = (p_matrix <= config['PValue'])
+    corr = (p_matrix <= config['PValue']) & (p_matrix != 0)
+    if not corr.any():
+        return 0
+    corr_coords = list(zip(lons2d[corr], lats2d[corr]))
+    # create correlation basins
+    corgrp_matrix = np.zeros((nrowssst, ncolssst)) * np.nan
+
+    minx = float(config.get('basinbounds', {}).get('minlon', -180))
+    maxx = float(config.get('basinbounds', {}).get('maxlon', 366))
+    miny = float(config.get('basinbounds', {}).get('minlat', -90))
+    maxy = float(config.get('basinbounds', {}).get('maxlat', 90))
+    roi = [False] * len(corr_coords)
+    for i in range(len(corr_coords)):
+        if corr_coords[i][0] < minx or corr_coords[i][0] > maxx or corr_coords[i][1] < miny or \
+                corr_coords[i][1] > maxy:
+            roi[i] = True
+
+    db = dbcluster(corr_coords, 'dbscan', 5, SSTclusterSize, 3, 2)
+    coords_clustered = np.array(db.labels_)
+    coords_clustered[roi] = -1
+    uniq = list(set(coords_clustered))
+    minpixelperbasin = 6
+    for zone in uniq:
+        count = len(coords_clustered[coords_clustered == zone])
+        if count < minpixelperbasin: coords_clustered[coords_clustered == zone] = -1
+
+    basins = list(set(coords_clustered[coords_clustered != -1]))
+    SSTzones = len(basins)
+    if corr[corr == True].shape == coords_clustered.shape:
+        index = 0
+        for row in range(nrowssst):
+            for col in range(ncolssst):
+                if corr[row][col]:
+                    corgrp_matrix[row][col] = coords_clustered[index]
+                    index = index + 1
+    # generate correlation group matrices
+    basin_arr = ['Basin' + str(x) for x in basins]
+    basin_arr.insert(0, fcstPeriod)
+    basin_arr.insert(0, 'year')
+    corr_df = pd.DataFrame(columns=basin_arr)
+    corr_df['year'] = trainingYears
+    corr_df[fcstPeriod] = trainPredictant
+    corr_df.set_index('year', inplace=True)
+    for yr in range(nyearssst):
+        year = yearssst[yr]
+        sstavg = np.zeros(SSTzones)
+        corr_df.loc[year, fcstPeriod] = list(point_season.loc[[year], fcstPeriod])[0]
+        for group in range(SSTzones):
+            sstavg[group] = "{0:.3f}".format(np.mean(sst_arr[yr][corgrp_matrix == basins[group]]))
+            corr_df.loc[year, 'Basin' + str(basins[group])] = sstavg[group]
+    corr_df = corr_df.dropna(how='all', axis=1)
+    basin_arr = list(corr_df.columns)
+    indx = basin_arr.index(fcstPeriod)
+    basin_arr.pop(indx)
+    if len(basin_arr) == 0:
+        return None
+    basin_matrix = np.array(corr_df[basin_arr])
+
+    # get basin combination with highest r-square: returns bestr2score, final_basins, final_basin_matrix
+    basin_matrix_df = pd.DataFrame(basin_matrix[:len(trainingYears)], columns=basin_arr)
+    notnull = np.isfinite(np.array(predictant[:len(trainingYears)]))
+    try:
+        final_basins, comments = stepwise_selection(basin_matrix_df[notnull].astype(float),
+                                                list(predictant[:len(trainingYears)][notnull]),
+                                                initial_list=basin_arr, threshold_out=config.get('stepwisePvalue'))
+    except:
+        final_basins = basin_arr[:]
+        comments = []
+    selected_basins = final_basins[:]
+    if len(final_basins) == 0:
+        selected_basins = basin_arr[:]
+        final_basins = basin_arr[:]
+    selected_basins.insert(0, 'y_intercept')
+
+    combo_basin_matrix = np.zeros((len(yearssst), len(final_basins))) * np.nan
+    # loop for all years where SST is available
+    for yr in range(len(yearssst)):
+        for group in range(len(final_basins)):
+            # get corresponding sst average for the group from main basin_matrix
+            combo_basin_matrix[yr][group] = basin_matrix[yr][basin_arr.index(final_basins[group])]
+
+    training_Xmatrix = combo_basin_matrix[:len(trainingYears)]
+    testing_Xmatrix = combo_basin_matrix[len(trainingYears):]
+    testing_years = yearssst[len(trainingYears):]
+    notnull = np.isfinite(training_actual)
+    t1, t2 = np.quantile(training_actual, [0.333, 0.666])
+    # scale the predictor
+    scaler = StandardScaler()
+    scaler.fit(training_Xmatrix)
+    StandardScaler(copy=True, with_mean=True, with_std=True)
+    X_train = scaler.transform(training_Xmatrix)
+    X_test = scaler.transform(testing_Xmatrix)
+
+    if algorithm == 'MLP':
+        start_time = time.time()
+        activation_fn = 'tanh'
+        solver_fn = 'lbfgs'
+        ratings = {}
+        for x in range(2, 21):
+            for y in range(0, 21):
+                if y > x: continue
+                hiddenlayerSize = (x + 1, y + 1)
+                regm = MLPRegressor(hidden_layer_sizes=hiddenlayerSize,
+                                    activation=activation_fn, solver=solver_fn, random_state=42, max_iter=700)
+                try:
+                    regm.fit(X_train[notnull], np.asarray(training_actual)[notnull])
+                except:
+                    continue
+                forecasts = np.array(regm.predict(X_test))
+                warnings.filterwarnings('error')
+                try:
+                    m, n = pearsonr(np.array(forecasts)[test_notnull], list(np.ravel(test_actual)[test_notnull]))
+                except:
+                    continue
+                v = np.std(forecasts)
+                ratings[str(x + 1) + '_' + str(y + 1)] = (hit_score(forecasts, test_actual, t1, t2) * (m**2), v)
+
+        combs = sorted(ratings.items(), key=lambda xx: xx[1][0], reverse=True)
+        v = np.std(np.ravel(test_actual[test_notnull]))
+        r, s = None, None
+        for x in range(len(combs)):
+            if combs[x][1][0] >= 0.1 and combs[x][1][1] >= v / 2:
+                r, s = combs[x][0].split('_')
+                break
+        if (r is not None) and (s is not None):
+            if int(s) == 0:
+                hiddenlayerSize = (int(r),)
+            else:
+                hiddenlayerSize = (int(r), int(s),)
+            regm = MLPRegressor(hidden_layer_sizes=hiddenlayerSize,
+                                activation=activation_fn, solver=solver_fn, random_state=42, max_iter=700)
+            regm.fit(X_train[notnull], np.asarray(training_actual)[notnull])
+            mlp_fcstdf = pd.DataFrame(columns=['Year', fcstPeriod, 'MLPfcst'])
+            mlp_fcstdf['Year'] = testing_years
+            mlp_fcstdf[fcstPeriod] = test_actual
+            mlp_fcstdf['MLPfcst'] = np.array(regm.predict(X_test))
+            mlp_fcstdf.set_index('Year', inplace=True)
+            warnings.filterwarnings('error')
+            m, n = pearsonr(np.array(mlp_fcstdf['MLPfcst'])[test_notnull], list(np.ravel(test_actual[test_notnull])))
+            r2score = m ** 2
+            q1, q2, q3, pmedian, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
+                run_model_skill(mlp_fcstdf, fcstPeriod, 'MLPfcst', r2score, training_actual)
+            a_series = pd.Series([predictorName, algorithm, point, q1, q2, q3, pmedian, famnt,
+                                  fclass, r2score, HS, Prob], index=forecastdf.columns)
+            forecastdf = forecastdf.append(a_series, ignore_index=True)
+            mlp_fcstdf.rename(columns={'MLPfcst': predictorName +'_MLP'}, inplace=True)
+
+    if algorithm == 'LR':
+        regr = linear_model.LinearRegression()
+        regr.fit(X_train[notnull], np.asarray(training_actual)[notnull])
+        intercept = regr.intercept_
+        coefficients = regr.coef_
+        lr_fcstdf = pd.DataFrame(columns=['Year', fcstPeriod, 'LRfcst'])
+        lr_fcstdf['Year'] = testing_years
+        lr_fcstdf[fcstPeriod] = test_actual
+        lr_fcstdf['LRfcst'] = np.array(regr.predict(X_test))
+        lr_fcstdf.set_index('Year', inplace=True)
+        warnings.filterwarnings('error')
+        try:
+            m, n = pearsonr(np.array(lr_fcstdf['LRfcst'])[test_notnull], list(np.ravel(test_actual)[test_notnull]))
+        except:
+            return None
+        r2score = m ** 2
+        regrFormula = {"intercept": intercept, "coefficients": coefficients}
+        coeff_arr = list(regrFormula["coefficients"])
+        coeff_arr.insert(0, regrFormula["intercept"])
+        q1, q2, q3, pmedian, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
+            run_model_skill(lr_fcstdf, fcstPeriod, 'LRfcst', r2score, training_actual)
+        a_series = pd.Series([predictorName, algorithm, point, q1, q2, q3, pmedian, famnt,
+                              fclass, r2score, HS, Prob], index=forecastdf.columns)
+        forecastdf = forecastdf.append(a_series, ignore_index=True)
+        lr_fcstdf.rename(columns={'LRfcst': predictorName + '_LR'}, inplace=True)
+
+    # return station forecast
+    if isinstance(forecastdf, pd.DataFrame):
+        return forecastdf
+    else:
+        return None
+
+
+def forecast_unit(config, predictordict, predictantdict, fcstPeriod, algorithm, station, outdir):
+    predictorName = predictordict.get('Name')
+    output = {}
+    stationYF_dfs = []
+    output[station] = {}
+    input_data = predictantdict['data']
+    indx = predictantdict['stations'].index(station)
+    lat = predictantdict['lats'][indx]
+    lon = predictantdict['lons'][indx]
+    station_data_all =  input_data.loc[input_data['ID'] == station]
+    trainStartYear = int(config['trainStartYear'])
+    trainEndYear = int(config['trainEndYear'])
+    trainingYears = [yr for yr in range(trainStartYear, trainEndYear + 1)]
+    nyears = len(trainingYears)
+    forecastdf = pd.DataFrame(columns=['Predictor', 'Algorithm', 'ID', 'Lat', 'Lon', 't1', 't2', 't3',
+                                       'median', 'fcst', 'class', 'r2score', 'HS', 'Prob'])
+
+    output[station][predictorName] = {}
+    sst_arr = predictordict.get('data')
+    prefixParam = {"Predictor": predictorName, "Param": predictordict['param'],
+                   "PredictorMonth": config.get('predictorMonth'),
+                   "startyr": trainStartYear, "endyr": config['trainEndYear'],
+                   "fcstYear": config['fcstyear'], "fcstPeriod": fcstPeriod, "station": str(station)}
+    nyearssst, nrowssst, ncolssst = sst_arr.shape
+    yearspredictant = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
+    station_data = station_data_all.loc[:,
+                   ('Year', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')]
+    station_data.drop_duplicates('Year', inplace=True)
+    station_data = station_data.apply(pd.to_numeric, errors='coerce')
+    seasonal_precip = pd.DataFrame(columns=['Year',fcstPeriod])
+    seasonal_precip['Year'] = yearspredictant
+    seasonal_precip.set_index('Year', inplace=True)
+    station_data.set_index('Year', inplace=True)
+    for year in yearspredictant:
+        if config.get('fcstPeriodLength', '3month') == '3month':
+            if config['composition'] == "Sum":
+                seasonal_precip.loc[[year], fcstPeriod] = season_cumulation(station_data, year, fcstPeriod)
+            else:
+                seasonal_precip.loc[[year], fcstPeriod] = season_average(station_data, year, fcstPeriod)
+        else:
+            try:
+                seasonal_precip.loc[[year], fcstPeriod] = round(float(station_data.loc[[year], fcstPeriod]), 1)
+            except KeyError:
+                seasonal_precip.loc[[year], fcstPeriod] = np.nan
+
+    predictant = np.asarray(seasonal_precip, dtype=float).reshape(-1, )
+    training_actual = predictant[:len(trainingYears)]
+    test_actual = predictant[len(trainingYears):]
+    test_notnull = np.isfinite(test_actual)
+    name = re.sub('[^a-zA-Z0-9]', '', prefixParam["station"])
+    prefix = prefixParam["Predictor"] + '_' + prefixParam["Param"] + '_' + config.get('predictorMonth') + '_' + \
+             str(prefixParam["startyr"]) + '-' + str(prefixParam["endyr"]) + '_' + name
+    if (len(training_actual[np.isfinite(training_actual)]) < 6) or (len(test_actual[np.isfinite(test_actual)]) < 2):
+        return None
+
+    # compute basins
+    SSTclusterSize = 1000.
+    trainPredictant = predictant[:nyears]
+    trainSST = sst_arr[:nyears]
+    pnotnull = np.isfinite(trainPredictant)
+    nyearssst, nrowssst, ncolssst = sst_arr.shape
+    yearssst = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
+    # nsst = sst_arr[yearssst.index(fcstYear)]
+    lons2d, lats2d = np.meshgrid(predictordict['lons'], predictordict['lats'])
+    # calculate correlation
+    r_matrix = np.zeros((nrowssst, ncolssst))
+    p_matrix = np.zeros((nrowssst, ncolssst))
+    # calculate correlation
+    for row in range(nrowssst):
+        for col in range(ncolssst):
+            sstvals = np.array(trainSST[:, row][:, col], dtype=float)
+            warnings.filterwarnings('error')
+            try:
+                notnull = pnotnull & np.isfinite(sstvals)
+                r_matrix[row][col], p_matrix[row][col] = pearsonr(trainPredictant[notnull], sstvals[notnull])
+            except:
+                pass
+    # corr = (p_matrix <= config['PValue']) & (abs(r_matrix) >= 0.5)
+    corr = (p_matrix <= config['PValue']) & (p_matrix != 0)
+    if not corr.any():
+        return 0
+    corr_coords = list(zip(lons2d[corr], lats2d[corr]))
+    # create correlation basins
+    corgrp_matrix = np.zeros((nrowssst, ncolssst)) * np.nan
+
+    minx = float(config.get('basinbounds',{}).get('minlon', -180))
+    maxx = float(config.get('basinbounds',{}).get('maxlon', 366))
+    miny = float(config.get('basinbounds',{}).get('minlat', -90))
+    maxy = float(config.get('basinbounds',{}).get('maxlat', 90))
+    roi = [False] * len(corr_coords)
+    for i in range(len(corr_coords)):
+        if corr_coords[i][0] < minx or corr_coords[i][0] > maxx or corr_coords[i][1] < miny or \
+                corr_coords[i][1] > maxy:
+            roi[i] = True
+
+    db = dbcluster(corr_coords, 'dbscan', 5, SSTclusterSize, 3, 2)
+    coords_clustered = np.array(db.labels_)
+    coords_clustered[roi] = -1
+    uniq = list(set(coords_clustered))
+    minpixelperbasin = 6
+    for zone in uniq:
+        count = len(coords_clustered[coords_clustered == zone])
+        if count < minpixelperbasin: coords_clustered[coords_clustered == zone] = -1
+
+    basins = list(set(coords_clustered[coords_clustered != -1]))
+    SSTzones = len(basins)
+    if corr[corr == True].shape == coords_clustered.shape:
+        index = 0
+        for row in range(nrowssst):
+            for col in range(ncolssst):
+                if corr[row][col]:
+                    corgrp_matrix[row][col] = coords_clustered[index]
+                    index = index + 1
+    # generate correlation group matrices
+    basin_arr = ['Basin' + str(x) for x in basins]
+    basin_arr.insert(0, fcstPeriod)
+    basin_arr.insert(0, 'year')
+    corr_df = pd.DataFrame(columns=basin_arr)
+    corr_df['year'] = trainingYears
+    corr_df[fcstPeriod] = trainPredictant
+    corr_df.set_index('year', inplace=True)
+    for yr in range(nyearssst):
+        year = yearssst[yr]
+        sstavg = np.zeros(SSTzones)
+        corr_df.loc[year, fcstPeriod] = list(seasonal_precip.loc[[year], fcstPeriod])[0]
+        for group in range(SSTzones):
+            sstavg[group] = "{0:.3f}".format(np.mean(sst_arr[yr][corgrp_matrix == basins[group]]))
+            corr_df.loc[year, 'Basin' + str(basins[group])] = sstavg[group]
+    corr_df = corr_df.dropna(how='all', axis=1)
+    basin_arr = list(corr_df.columns)
+    indx = basin_arr.index(fcstPeriod)
+    basin_arr.pop(indx)
+    # basins = [x.replace('Basin','') for x in basin_arr]
+    if len(basin_arr) == 0:
+        return None
+    basin_matrix = np.array(corr_df[basin_arr])
+    corroutdir = outdir + os.sep + "Correlation"
+    writeout(prefix, p_matrix, corgrp_matrix, corr_df, predictordict['lats'],
+             predictordict['lons'], corroutdir, config)
+
+    # get basin combination with highest r-square: returns bestr2score, final_basins, final_basin_matrix
+    basin_matrix_df = pd.DataFrame(basin_matrix[:len(trainingYears)], columns=basin_arr)
+    notnull = np.isfinite(np.array(predictant[:len(trainingYears)]))
+    try:
+        final_basins, comments = stepwise_selection(basin_matrix_df[notnull].astype(float),
+                                                list(predictant[:len(trainingYears)][notnull]),
+                                                initial_list=basin_arr, threshold_out=config.get('stepwisePvalue'))
+    except:
+        final_basins = basin_arr[:]
+        comments = []
+    selected_basins = final_basins[:]
+    if len(final_basins) == 0:
+        selected_basins = basin_arr[:]
+        final_basins = basin_arr[:]
+        comments = []
+    selected_basins.insert(0, 'y_intercept')
+    comments.append("Final basins: " + str(final_basins))
+    csv = corroutdir + os.sep + prefix + '_forward-selection.csv'
+    comment_df = pd.DataFrame(columns=['Comment'])
+    comment_df['Comment'] = comments
+    if int(config.get('plots', {}).get('corrcsvs', 1)) == 1: comment_df.to_csv(csv, header=True, index=False)
+
+    combo_basin_matrix = np.zeros((len(yearssst), len(final_basins))) * np.nan
+    # loop for all years where SST is available
+    for yr in range(len(yearssst)):
+        for group in range(len(final_basins)):
+            # get corresponding sst average for the group from main basin_matrix
+            combo_basin_matrix[yr][group] = basin_matrix[yr][basin_arr.index(final_basins[group])]
+
+    nbasins = len(final_basins)
+    training_Xmatrix = combo_basin_matrix[:len(trainingYears)]
+    testing_Xmatrix = combo_basin_matrix[len(trainingYears):]
+    testing_years = yearssst[len(trainingYears):]
+    notnull = np.isfinite(training_actual)
+    t1, t2 = np.quantile(training_actual, [0.333, 0.666])
+    # scale the predictor
+    scaler = StandardScaler()
+    scaler.fit(training_Xmatrix)
+    StandardScaler(copy=True, with_mean=True, with_std=True)
+    X_train = scaler.transform(training_Xmatrix)
+    X_test = scaler.transform(testing_Xmatrix)
+    regoutdir = outdir + os.sep + "Regression"
+    os.makedirs(regoutdir, exist_ok=True)
+
+    if algorithm == 'MLP':
+        start_time = time.time()
+        activation_fn = 'tanh'
+        solver_fn = 'lbfgs'
+        ratings = {}
+        for x in range(2, 21):
+            for y in range(0, 21):
+                if y > x: continue
+                hiddenlayerSize = (x + 1, y + 1)
+                regm = MLPRegressor(hidden_layer_sizes=hiddenlayerSize,
+                                    activation=activation_fn, solver=solver_fn, random_state=42, max_iter=700)
+                try:
+                    regm.fit(X_train[notnull], np.asarray(training_actual)[notnull])
+                except:
+                    continue
+                forecasts = np.array(regm.predict(X_test))
+                warnings.filterwarnings('error')
+                try:
+                    m, n = pearsonr(np.array(forecasts)[test_notnull], list(np.ravel(test_actual)[test_notnull]))
+                except:
+                    continue
+                v = np.std(forecasts)
+                ratings[str(x + 1) + '_' + str(y + 1)] = (hit_score(forecasts, test_actual, t1, t2) * (m**2), v)
+
+        combs = sorted(ratings.items(), key=lambda xx: xx[1][0], reverse=True)
+        v = np.std(np.ravel(test_actual[test_notnull]))
+        r, s = None, None
+        for x in range(len(combs)):
+            if combs[x][1][0] >= 0.1 and combs[x][1][1] >= v / 2:
+                r, s = combs[x][0].split('_')
+                break
+        if (r is not None) and (s is not None):
+            if int(s) == 0:
+                hiddenlayerSize = (int(r),)
+            else:
+                hiddenlayerSize = (int(r), int(s),)
+            regm = MLPRegressor(hidden_layer_sizes=hiddenlayerSize,
+                                activation=activation_fn, solver=solver_fn, random_state=42, max_iter=700)
+            regm.fit(X_train[notnull], np.asarray(training_actual)[notnull])
+            if int(config.get('plots', {}).get('trainingraphs', 0)) == 1:
+                mlp_traindf = pd.DataFrame(columns=['Year', fcstPeriod, 'MLPfcst'])
+                mlp_traindf['Year'] = trainingYears
+                mlp_traindf[fcstPeriod] = training_actual
+                mlp_traindf['MLPfcst'] =  np.array(regm.predict(X_train))
+                mlp_traindf.set_index('Year', inplace=True)
+            mlp_fcstdf = pd.DataFrame(columns=['Year', fcstPeriod, 'MLPfcst'])
+            mlp_fcstdf['Year'] = testing_years
+            mlp_fcstdf[fcstPeriod] = test_actual
+            mlp_fcstdf['MLPfcst'] = np.array(regm.predict(X_test))
+            mlp_fcstdf.set_index('Year', inplace=True)
+            warnings.filterwarnings('error')
+            m, n = pearsonr(np.array(mlp_fcstdf['MLPfcst'])[test_notnull], list(np.ravel(test_actual[test_notnull])))
+            r2score = m ** 2
+            mlpdirout = regoutdir + os.sep + 'MLP'
+            os.makedirs(mlpdirout, exist_ok=True)
+            file = mlpdirout + os.sep + prefix + '_' + fcstPeriod + '_mlpsummary.txt'
+            if int(config.get('plots', {}).get('regrcsvs', 1)) == 1:
+                f = open(file, 'w')
+                f.write('MLPRegressor Parameters ---\n')
+                f.write('architecture=' + str(nbasins) + ',' + r + ',' + s + ',1\n')
+                f.write('r-square: ' + str(r2score) + ', p-value:' + str(n) + '\n')
+                f.write('processing time: ' + str(time.time() - start_time) + ' seconds\n\n')
+                f.write(json.dumps(regm.get_params(), indent=4, sort_keys=True))
+                f.write('\n\n')
+                f.write('Ranking of number of neurons per hidden layer (HL) ---\n')
+                f.write('("HL1_HL2", (r2score, std))\n')
+                for ele in combs[:20]:
+                    f.write(str(ele) + '\n')
+                f.close()
+            csv = mlpdirout + os.sep + prefix + '_' + fcstPeriod + '_forecast_matrix.csv'
+            mlp_fcstdf.reset_index()
+            if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: mlp_fcstdf.to_csv(csv, index=True)
+            #
+            q1, q2, q3, pmedian, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
+                run_model_skill(mlp_fcstdf, fcstPeriod, 'MLPfcst', r2score, training_actual)
+            csv = mlpdirout + os.sep + prefix + '_score-contingency-table.csv'
+            if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: cgtable_df.to_csv(csv, index=False)
+            csv = mlpdirout + os.sep + prefix + '_score-statistics.csv'
+            if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: skill_df.to_csv(csv, index=False)
+            a_series = pd.Series([predictorName, algorithm, station, lat, lon, q1, q2, q3, pmedian, famnt,
+                                  fclass, r2score, HS, Prob], index=forecastdf.columns)
+            forecastdf = forecastdf.append(a_series, ignore_index=True)
+            if int(config.get('plots', {}).get('trainingraphs', 0)) == 1:
+                mlp_fcstdf = pd.concat([mlp_traindf, mlp_fcstdf], ignore_index=False)
+            mlp_fcstdf.rename(columns={'MLPfcst': predictorName +'_MLP'}, inplace=True)
+            stationYF_dfs.append(mlp_fcstdf)
+
+    if algorithm == 'LR':
+        # start_time = time.time()
+        regr = linear_model.LinearRegression()
+        regr.fit(X_train[notnull], np.asarray(training_actual)[notnull])
+        intercept = regr.intercept_
+        coefficients = regr.coef_
+        if int(config.get('plots', {}).get('trainingraphs', 0)) == 1:
+            lr_traindf = pd.DataFrame(columns=['Year', fcstPeriod, 'LRfcst'])
+            lr_traindf['Year'] = trainingYears
+            lr_traindf[fcstPeriod] = training_actual
+            lr_traindf['LRfcst'] = np.array(regr.predict(X_train))
+            lr_traindf.set_index('Year', inplace=True)
+        lr_fcstdf = pd.DataFrame(columns=['Year', fcstPeriod, 'LRfcst'])
+        lr_fcstdf['Year'] = testing_years
+        lr_fcstdf[fcstPeriod] = test_actual
+        lr_fcstdf['LRfcst'] = np.array(regr.predict(X_test))
+        lr_fcstdf.set_index('Year', inplace=True)
+        warnings.filterwarnings('error')
+        try:
+            m, n = pearsonr(np.array(lr_fcstdf['LRfcst'])[test_notnull], list(np.ravel(test_actual)[test_notnull]))
+        except:
+            return None
+        r2score = m ** 2
+        lrdirout = regoutdir + os.sep + 'LR'
+        os.makedirs(lrdirout, exist_ok=True)
+        csv = lrdirout + os.sep + prefix + '_' + fcstPeriod + '_forecast_matrix.csv'
+        lr_fcstdf.reset_index()
+        if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: lr_fcstdf.to_csv(csv, index=True)
+        #
+        regrFormula = {"intercept": intercept, "coefficients": coefficients}
+        coeff_arr = list(regrFormula["coefficients"])
+        coeff_arr.insert(0, regrFormula["intercept"])
+        reg_df = pd.DataFrame(columns=selected_basins)
+        reg_df.loc[0] = coeff_arr
+        csv = lrdirout+ os.sep + prefix + '_correlation-formula.csv'
+        if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: reg_df.to_csv(csv, index=False)
+        #
+        q1, q2, q3, pmedian, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
+            run_model_skill(lr_fcstdf, fcstPeriod, 'LRfcst', r2score, training_actual)
+        csv = lrdirout + os.sep + prefix + '_score-contingency-table.csv'
+        if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: cgtable_df.to_csv(csv, index=False)
+        csv = lrdirout + os.sep + prefix + '_score-statistics.csv'
+        if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: skill_df.to_csv(csv, index=False)
+        a_series = pd.Series([predictorName, algorithm, station, lat, lon, q1, q2, q3, pmedian, famnt,
+                              fclass, r2score, HS, Prob], index=forecastdf.columns)
+        forecastdf = forecastdf.append(a_series, ignore_index=True)
+        if int(config.get('plots', {}).get('trainingraphs', 0)) == 1:
+            lr_fcstdf = pd.concat([lr_traindf, lr_fcstdf], ignore_index=False)
+        lr_fcstdf.rename(columns={'LRfcst': predictorName + '_LR'}, inplace=True)
+        stationYF_dfs.append(lr_fcstdf)
+
+    # plot the forecast graphs
+    if (len(stationYF_dfs) > 0) and (int(config.get('plots', {}).get('fcstgraphs', 1)) == 1):
+        stationYF_df = pd.concat(stationYF_dfs, axis=1, join='outer')
+        stationYF_df = stationYF_df.loc[:, ~stationYF_df.columns.duplicated()]
+        stationYF_df = stationYF_df.reset_index()
+        fcstoutdir = outdir + os.sep + "Forecast"
+        os.makedirs(fcstoutdir, exist_ok=True)
+        graphpng = fcstoutdir + os.sep + 'forecast_graphs_' + station + '_' + predictorName + '_' + algorithm + '.png'
+        plot_Station_forecast(stationYF_df, fcstPeriod, graphpng, station, q1, q2, q3)
+    # return station forecast
+    if isinstance(forecastdf, pd.DataFrame):
+        return forecastdf
+    else:
+        return None
 
 def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, station):
     output = {}
@@ -545,7 +1300,6 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
     station_data_all =  input_data.loc[input_data['ID'] == station]
     trainStartYear = int(config['trainStartYear'])
     trainEndYear = int(config['trainEndYear'])
-    fcstPeriodType = int(config['fcstPeriodType'])
     fcstYear = int(config['fcstyear'])
     trainingYears = [yr for yr in range(trainStartYear, trainEndYear + 1)]
     nyears = len(trainingYears)
@@ -553,7 +1307,6 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                                        'median', 'fcst', 'class', 'r2score', 'HS', 'Prob'])
 
     for predictorName in predictordict:
-        print('\npredictor',predictorName,'...')
         output[station][predictorName] = {}
         predictorStartYr = predictordict[predictorName]['predictorStartYr']
         sst_arr = predictordict[predictorName]['data']
@@ -561,9 +1314,7 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                        "PredictorMonth": predictordict[predictorName]['predictorMonth'],
                        "startyr": trainStartYear, "endyr": config['trainEndYear'],
                        "fcstYear": config['fcstyear'], "fcstPeriod": fcstPeriod, "station": str(station)}
-        # years = [yr for yr in range(int(config['trainStartYear']), int(config['trainEndYear']) + 1)]
         nyearssst, nrowssst, ncolssst = sst_arr.shape
-        # yearssst = [yr for yr in range(predictorStartYr, (predictorStartYr + nyearssst))]
         yearspredictant = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
         station_data = station_data_all.loc[:,
                        ('Year', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')]
@@ -574,8 +1325,8 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         seasonal_precip.set_index('Year', inplace=True)
         station_data.set_index('Year', inplace=True)
         for year in yearspredictant:
-            if fcstPeriodType == 0:
-                if config['composition'] == "Cumulation":
+            if config.get('fcstPeriodLength', '3month') == '3month':
+                if config['composition'] == "Sum":
                     seasonal_precip.loc[[year], fcstPeriod] = season_cumulation(station_data, year, fcstPeriod)
                 else:
                     seasonal_precip.loc[[year], fcstPeriod] = season_average(station_data, year, fcstPeriod)
@@ -602,12 +1353,10 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         pnotnull = np.isfinite(trainPredictant)
         nyearssst, nrowssst, ncolssst = sst_arr.shape
         yearssst = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
-        # nsst = sst_arr[yearssst.index(fcstYear)]
         lons2d, lats2d = np.meshgrid(predictordict[predictorName]['lons'], predictordict[predictorName]['lats'])
         # calculate correlation
         r_matrix = np.zeros((nrowssst, ncolssst))
         p_matrix = np.zeros((nrowssst, ncolssst))
-        # calculate correlation
         for row in range(nrowssst):
             for col in range(ncolssst):
                 sstvals = np.array(trainSST[:, row][:, col], dtype=float)
@@ -618,7 +1367,7 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                 except:
                     pass
         # corr = (p_matrix <= config['PValue']) & (abs(r_matrix) >= 0.5)
-        corr = (p_matrix <= config['PValue'])
+        corr = (p_matrix <= config['PValue']) & (p_matrix != 0)
         if not corr.any():
             return 0
         corr_coords = list(zip(lons2d[corr], lats2d[corr]))
@@ -640,10 +1389,6 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         coords_clustered[roi] = -1
         uniq = list(set(coords_clustered))
         minpixelperbasin = 6
-        # if len(uniq) <= 15:
-        #     minpixelperbasin = 6
-        # else:
-        #     minpixelperbasin = 13
         for zone in uniq:
             count = len(coords_clustered[coords_clustered == zone])
             if count < minpixelperbasin: coords_clustered[coords_clustered == zone] = -1
@@ -681,17 +1426,16 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
             continue
         basin_matrix = np.array(corr_df[basin_arr])
         corroutdir = outdir + os.sep + "Correlation"
-        writeout(prefix, r_matrix, p_matrix, corgrp_matrix, corr_df, predictordict[predictorName]['lats'],
+        writeout(prefix, p_matrix, corgrp_matrix, corr_df, predictordict[predictorName]['lats'],
                  predictordict[predictorName]['lons'], corroutdir, config)
 
         # get basin combination with highest r-square: returns bestr2score, final_basins, final_basin_matrix
-        print('checking best basin combination...')
         basin_matrix_df = pd.DataFrame(basin_matrix[:len(trainingYears)], columns=basin_arr)
         notnull = np.isfinite(np.array(predictant[:len(trainingYears)]))
         try:
             final_basins, comments = stepwise_selection(basin_matrix_df[notnull].astype(float),
                                                     list(predictant[:len(trainingYears)][notnull]),
-                                                    initial_list=basin_arr, threshold_out=config['stepwisePvalue'])
+                                                    initial_list=basin_arr, threshold_out=config.get('stepwisePvalue'))
         except:
             final_basins = basin_arr[:]
             comments = []
@@ -719,6 +1463,7 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         testing_Xmatrix = combo_basin_matrix[len(trainingYears):]
         testing_years = yearssst[len(trainingYears):]
         notnull = np.isfinite(training_actual)
+        t1, t2 = np.quantile(training_actual, [0.333, 0.666])
         # scale the predictor
         scaler = StandardScaler()
         scaler.fit(training_Xmatrix)
@@ -731,35 +1476,28 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
         for algorithm in config.get('algorithms'):
 
             if algorithm == 'MLP':
-                print('mlp regression...')
                 start_time = time.time()
                 activation_fn = 'tanh'
                 solver_fn = 'lbfgs'
                 ratings = {}
-                for x in range(50):
-                    for y in range(1, 20):
+                for x in range(2, 21):
+                    for y in range(0, 21):
                         if y > x: continue
-                        forecasts = []
-                        if y == 0:
-                            hiddenlayerSize = (x + 1,)
-                        else:
-                            if x > 20: continue
-                            hiddenlayerSize = (x + 1, y + 1)
+                        hiddenlayerSize = (x + 1, y + 1)
                         regm = MLPRegressor(hidden_layer_sizes=hiddenlayerSize,
                                             activation=activation_fn, solver=solver_fn, random_state=42, max_iter=700)
                         try:
                             regm.fit(X_train[notnull], np.asarray(training_actual)[notnull])
                         except:
                             continue
-                        for z in range(len(X_test)):
-                            forecasts.append(regm.predict(X_test[z].reshape(1, -1))[0])
+                        forecasts = np.array(regm.predict(X_test))
                         warnings.filterwarnings('error')
                         try:
-                            m, n = pearsonr(np.array(forecasts)[test_notnull], list(np.ravel(test_actual)[test_notnull]))
+                            m, n = pearsonr(forecasts[test_notnull], list(np.ravel(test_actual)[test_notnull]))
                         except:
                             continue
                         v = np.std(forecasts)
-                        ratings[str(x + 1) + '_' + str(y + 1)] = (m ** 2, v)
+                        ratings[str(x + 1) + '_' + str(y + 1)] = (hit_score(forecasts, test_actual, t1, t2) * (m**2), v)
 
                 combs = sorted(ratings.items(), key=lambda xx: xx[1][0], reverse=True)
                 v = np.std(np.ravel(test_actual[test_notnull]))
@@ -776,13 +1514,17 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                     regm = MLPRegressor(hidden_layer_sizes=hiddenlayerSize,
                                         activation=activation_fn, solver=solver_fn, random_state=42, max_iter=700)
                     regm.fit(X_train[notnull], np.asarray(training_actual)[notnull])
+                    if int(config.get('plots', {}).get('trainingraphs', 0)) == 1:
+                        mlp_traindf = pd.DataFrame(columns=['Year', fcstPeriod, 'MLPfcst'])
+                        mlp_traindf['Year'] = trainingYears
+                        mlp_traindf[fcstPeriod] = training_actual
+                        mlp_traindf['MLPfcst'] =  np.array(regm.predict(X_train))
+                        mlp_traindf.set_index('Year', inplace=True)
                     mlp_fcstdf = pd.DataFrame(columns=['Year', fcstPeriod, 'MLPfcst'])
                     mlp_fcstdf['Year'] = testing_years
                     mlp_fcstdf[fcstPeriod] = test_actual
+                    mlp_fcstdf['MLPfcst'] = np.array(regm.predict(X_test))
                     mlp_fcstdf.set_index('Year', inplace=True)
-                    for yr in range(len(testing_years)):
-                        year = testing_years[yr]
-                        mlp_fcstdf.loc[year, 'MLPfcst'] = regm.predict(X_test[yr].reshape(1, -1))[0]
                     warnings.filterwarnings('error')
                     m, n = pearsonr(np.array(mlp_fcstdf['MLPfcst'])[test_notnull], list(np.ravel(test_actual[test_notnull])))
                     r2score = m ** 2
@@ -815,31 +1557,34 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                     a_series = pd.Series([predictorName, algorithm, station, lat, lon, q1, q2, q3, pmedian, famnt,
                                           fclass, r2score, HS, Prob], index=forecastdf.columns)
                     forecastdf = forecastdf.append(a_series, ignore_index=True)
+                    if int(config.get('plots', {}).get('trainingraphs', 0)) == 1:
+                        mlp_fcstdf = pd.concat([mlp_traindf, mlp_fcstdf], ignore_index=False)
                     mlp_fcstdf.rename(columns={'MLPfcst': predictorName +'_MLP'}, inplace=True)
                     stationYF_dfs.append(mlp_fcstdf)
 
             if algorithm == 'LR':
-                print('linear regression...')
                 # start_time = time.time()
                 regr = linear_model.LinearRegression()
                 regr.fit(X_train[notnull], np.asarray(training_actual)[notnull])
                 intercept = regr.intercept_
                 coefficients = regr.coef_
+                if int(config.get('plots', {}).get('trainingraphs', 0)) == 1:
+                    lr_traindf = pd.DataFrame(columns=['Year', fcstPeriod, 'LRfcst'])
+                    lr_traindf['Year'] = trainingYears
+                    lr_traindf[fcstPeriod] = training_actual
+                    lr_traindf['LRfcst'] = np.array(regr.predict(X_train))
+                    lr_traindf.set_index('Year', inplace=True)
                 lr_fcstdf = pd.DataFrame(columns=['Year', fcstPeriod, 'LRfcst'])
                 lr_fcstdf['Year'] = testing_years
                 lr_fcstdf[fcstPeriod] = test_actual
+                lr_fcstdf['LRfcst'] = np.array(regr.predict(X_test))
                 lr_fcstdf.set_index('Year', inplace=True)
-                for yr in range(len(testing_years)):
-                    year = testing_years[yr]
-                    lr_fcstdf.loc[year, 'LRfcst'] = regr.predict(X_test[yr].reshape(1, -1))[0]
                 warnings.filterwarnings('error')
                 try:
                     m, n = pearsonr(np.array(lr_fcstdf['LRfcst'])[test_notnull], list(np.ravel(test_actual)[test_notnull]))
                 except:
                     continue
                 r2score = m ** 2
-                # print('r-square', r2score, ', p', n)
-                # print('processing time(sec)', time.time() - start_time)
                 lrdirout = regoutdir + os.sep + 'LR'
                 os.makedirs(lrdirout, exist_ok=True)
                 csv = lrdirout + os.sep + prefix + '_' + fcstPeriod + '_forecast_matrix.csv'
@@ -863,6 +1608,8 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                 a_series = pd.Series([predictorName, algorithm, station, lat, lon, q1, q2, q3, pmedian, famnt,
                                       fclass, r2score, HS, Prob], index=forecastdf.columns)
                 forecastdf = forecastdf.append(a_series, ignore_index=True)
+                if int(config.get('plots', {}).get('trainingraphs', 0)) == 1:
+                    lr_fcstdf = pd.concat([lr_traindf, lr_fcstdf], ignore_index=False)
                 lr_fcstdf.rename(columns={'LRfcst': predictorName + '_LR'}, inplace=True)
                 stationYF_dfs.append(lr_fcstdf)
 
@@ -878,3 +1625,5 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
     # return station forecast
     if isinstance(forecastdf, pd.DataFrame):
         return forecastdf
+    else:
+        return None

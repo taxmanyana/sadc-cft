@@ -1,0 +1,55 @@
+{
+    "version": "1.4.0",
+    "outDir": "C:/Users/Moitlhobogi/Documents/projects/CFT/outputs",
+    "predictorList": [
+        "C:/Users/Moitlhobogi/Documents/projects/CFT/sadc_cft-1.4.0/data/GPH850_Jul_1960_2020.nc",
+        "C:/Users/Moitlhobogi/Documents/projects/CFT/sadc_cft-1.4.0/data/SST_Jul_1960_2020.nc"
+    ],
+    "predictantList": [
+        "C:/Users/Moitlhobogi/Documents/projects/CFT/sadc_cft-1.4.0/data/Lesotho_cru_ts4.04.1901.2019.pre.dat.nc"
+    ],
+    "predictantMissingValue": -9999,
+    "predictantattr": "pre",
+    "fcstPeriodStartMonth": "Oct",
+    "fcstPeriodLength": "3month",
+    "trainStartYear": 1971,
+    "trainEndYear": 2000,
+    "predictorMonth": "Jul",
+    "PValue": 0.05,
+    "stepwisePvalue": 0.3,
+    "minHSscore": 50,
+    "PODfilter": 1,
+    "inputFormat": "NetCDF",
+    "composition": "Sum",
+    "zonevector": {
+        "file": "",
+        "ID": -1,
+        "attr": []
+    },
+    "fcstyear": 2020,
+    "algorithms": [
+        "LR"
+    ],
+    "basinbounds": {
+        "minlat": -90.0,
+        "maxlat": 90.0,
+        "minlon": -180.0,
+        "maxlon": 360.0
+    },
+    "plots": {
+        "basemap": "data/sadc_countries.geojson",
+        "zonepoints": 1,
+        "corrmaps": 1,
+        "corrcsvs": 1,
+        "regrcsvs": 1,
+        "fcstgraphs": 1,
+        "trainingraphs": 1
+    },
+    "colors": {
+        "class0": "#ffffff",
+        "class1": "#d2b48c",
+        "class2": "#fbff03",
+        "class3": "#0bfffb",
+        "class4": "#1601fc"
+    }
+}

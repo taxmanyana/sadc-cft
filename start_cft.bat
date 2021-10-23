@@ -19,4 +19,4 @@ echo.
 SET PATH=%PATH%;%QGIS%\bin
 SET PYTHONPATH=%QGIS%\apps\Python37;%PYTHONPATH%
 echo.
-START /B pythonw.exe cit.py
+START /B pythonw.exe cft.py
