@@ -88,3 +88,10 @@ Bugfix: Fix 'permission denied' error that occurs when writing correlation maps 
 v1.4.2 - 22 August 2021
 Bugfix: Corrected bug where remaning predictors are skipped for a station when there is no correlation with the first predictor
 Feature: Generate CSV of selected members which meet HS and POD filtering
+
+v1.4.3 - 29 December 2021
+Feature: Allow CSV predictor format
+Feature: Plot predicated vs predictor graphs (correlation formula graph) for single variable predictor
+
+
+

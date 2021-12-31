@@ -62,9 +62,67 @@ def integer(x):
     else:
         return np.nan
 
+    
+class csv_data:
+    def __init__(self, file, month, param = 'val'):
+        self.X, self.Y, self.lons, self.lats = None, None, None, None
+        self.file = file
+        self.param = param
+        self.month = month.lower()
+        if self.is_csv():
+            self.dataset = pd.read_csv(file)
+        else:
+            self.dataset = pd.read_csv(file, delimiter=r"\s+")
+        self.dataset.columns = self.dataset.columns.str.lower()
+        if self.month not in self.dataset.columns:
+            raise ValueError('column "' + self.month + '" not detected in predictor csv. check format')
+        if 'year' not in self.dataset.columns:
+            raise ValueError('column "Year" not detected in predictor csv. check format')
+        
+    def is_csv(self):
+        f = open(self.file, "r")
+        lines = f.read()
+        f.close()
+        if lines.count(',') > 1:
+            return 1
+        else:
+            return 0
+
+    def var(self):
+        keys = []
+        for key in self.keys:
+            keys.append(key)
+        ref_keys = ['Y', 'X', 'Z', 'T', 'zlev', 'time', 'lon', 'lat']
+        for x in reversed(range(len(keys))):
+            if keys[x] not in ref_keys:
+                return keys[x]
+        return None
+
+    def tslice(self):
+        return self.dataset[self.month]
+
+    def times(self):
+        timearr = []
+        mon = datetime.strptime(self.month, '%b').strftime('%m')
+        tarr = self.dataset['year']
+        timearr = [str(tarr[x]) + str(mon) + '01' for x in range(len(tarr))]
+        return timearr
+
+    def years(self):
+        return sorted(list(set([x[:4] for x in self.times()])))
+
+    def months(self):
+        return sorted(list(set([x[:6] for x in self.times()])))
+
+    def shape(self):
+        return(0, 0)
+
+
+
 class netcdf_data:
     # NB: NetCDF reads from the bottom going up
     def __init__(self, file, param=None, level=0):
+        self.X, self.Y, self.lons, self.lats = None, None, None, None
         self.file = file
         self.param = param
         self.level = level
@@ -86,8 +144,8 @@ class netcdf_data:
         self.tunits = str(self.dataset.variables[self.tpar].units).split(" since ", 1)[0]
         ref_date = str(self.dataset.variables[self.tpar].units).split(" since ", 1)[1]
         self.ref_date = datetime.strptime(ref_date, '%Y-%m-%d')
-        self.lons = self.dataset.variables[self.X][:]
-        self.lats = self.dataset.variables[self.Y][:]
+        if self.X is not None: self.lons = self.dataset.variables[self.X][:]
+        if self.Y is not None: self.lats = self.dataset.variables[self.Y][:]
         if param is None:
             self.param = self.var()
         if self.param not in self.keys:
@@ -106,9 +164,9 @@ class netcdf_data:
 
     def tslice(self, x=None, y=None):
         if x is None and y is None:
-            if len(self.dimensions) == 3:
+            if len(self.dimensions) == 3 or len(self.dimensions) == 1:
                 data = self.dataset.variables[self.param][:]
-            elif len(self.dimensions) == 4:
+            elif len(self.dimensions) == 4 or len(self.dimensions) == 2:
                 data = self.dataset.variables[self.param][:, self.level]
             else:
                 return None
@@ -147,8 +205,10 @@ class netcdf_data:
     def months(self):
         return sorted(list(set([x[:6] for x in self.times()])))
 
-    def shape(self):
-        return(len(self.lats), len(self.lons))
+    def shape(self, lenX = 0, lenY = 0):
+        if self.X is not None: lenX = len(self.lons)
+        if self.Y is not None: lenY = len(self.lats)
+        return(lenY, lenX)
 
 
 def season_cumulation(dfm, year, season):
@@ -613,6 +673,21 @@ def plot_Station_forecast(forecast_df, fcstPeriod, graphpng, station, q1, q2, q3
     plt.xticks(list(forecast_df['Year']), [str(x) for x in list(forecast_df['Year'])], fontsize=8, rotation=90)
     plt.xlabel('Year', fontsize=12)
     plt.ylabel('Forecast', fontsize=12)
+    plt.savefig(graphpng, bbox_inches = 'tight')
+    plt.close(fig)
+
+def plot_correlation_graph(corr_df, act, pred, fcst, graphpng):
+    DPI = 100
+    W = 800
+    H = 800
+    fig = plt.figure(figsize=(W/float(DPI), H/float(DPI)), frameon=True, dpi=DPI)
+    plt.scatter(np.array(corr_df[pred]), np.array(corr_df[act]), s=5, marker='o', c='blue', label=act)
+    plt.plot(np.array(corr_df[pred]), np.array(corr_df[fcst]), color='red', marker='+', label=fcst, linewidth=0.7)
+    plt.title('Predictand vs Predictor values', fontsize=12)
+    plt.legend(prop={'size': 6})
+    #plt.xticks(list(forecast_df['Year']), [str(x) for x in list(forecast_df['Year'])], fontsize=8, rotation=90)
+    plt.xlabel('Predictor', fontsize=12)
+    plt.ylabel('Predictand', fontsize=12)
     plt.savefig(graphpng, bbox_inches = 'tight')
     plt.close(fig)
 
@@ -1329,7 +1404,11 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                        "PredictorMonth": predictordict[predictorName]['predictorMonth'],
                        "startyr": trainStartYear, "endyr": config['trainEndYear'],
                        "fcstYear": config['fcstyear'], "fcstPeriod": fcstPeriod, "station": str(station)}
-        nyearssst, nrowssst, ncolssst = sst_arr.shape
+        try:
+            nyearssst, nrowssst, ncolssst = sst_arr.shape
+        except ValueError:
+            nyearssst, nrowssst, ncolssst = len(sst_arr), 0, 0
+            
         yearspredictant = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
         station_data = station_data_all.loc[:,
                        ('Year', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')]
@@ -1362,118 +1441,128 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
             continue
 
         # compute basins
-        SSTclusterSize = 1000.
         trainPredictant = predictant[:nyears]
         trainSST = sst_arr[:nyears]
         pnotnull = np.isfinite(trainPredictant)
-        nyearssst, nrowssst, ncolssst = sst_arr.shape
         yearssst = [yr for yr in range(trainStartYear, (trainStartYear + nyearssst))]
-        lons2d, lats2d = np.meshgrid(predictordict[predictorName]['lons'], predictordict[predictorName]['lats'])
-        # calculate correlation
-        r_matrix = np.zeros((nrowssst, ncolssst))
-        p_matrix = np.zeros((nrowssst, ncolssst))
-        for row in range(nrowssst):
-            for col in range(ncolssst):
-                sstvals = np.array(trainSST[:, row][:, col], dtype=float)
-                warnings.filterwarnings('error')
-                try:
-                    notnull = pnotnull & np.isfinite(sstvals)
-                    r_matrix[row][col], p_matrix[row][col] = pearsonr(trainPredictant[notnull], sstvals[notnull])
-                except:
-                    pass
-        # corr = (p_matrix <= config['PValue']) & (abs(r_matrix) >= 0.5)
-        corr = (p_matrix <= config['PValue']) & (p_matrix != 0)
-        if not corr.any():
-            continue
-        corr_coords = list(zip(lons2d[corr], lats2d[corr]))
-        # create correlation basins
-        corgrp_matrix = np.zeros((nrowssst, ncolssst)) * np.nan
-
-        minx = float(config.get('basinbounds',{}).get('minlon', -180))
-        maxx = float(config.get('basinbounds',{}).get('maxlon', 366))
-        miny = float(config.get('basinbounds',{}).get('minlat', -90))
-        maxy = float(config.get('basinbounds',{}).get('maxlat', 90))
-        roi = [False] * len(corr_coords)
-        for i in range(len(corr_coords)):
-            if corr_coords[i][0] < minx or corr_coords[i][0] > maxx or corr_coords[i][1] < miny or \
-                    corr_coords[i][1] > maxy:
-                roi[i] = True
-
-        db = dbcluster(corr_coords, 'dbscan', 5, SSTclusterSize, 3, 2)
-        coords_clustered = np.array(db.labels_)
-        coords_clustered[roi] = -1
-        uniq = list(set(coords_clustered))
-        minpixelperbasin = 6
-        for zone in uniq:
-            count = len(coords_clustered[coords_clustered == zone])
-            if count < minpixelperbasin: coords_clustered[coords_clustered == zone] = -1
-
-        basins = list(set(coords_clustered[coords_clustered != -1]))
-        SSTzones = len(basins)
-        if corr[corr == True].shape == coords_clustered.shape:
-            index = 0
+        if (nrowssst, ncolssst) != (0, 0): 
+            SSTclusterSize = 1000.
+            lons2d, lats2d = np.meshgrid(predictordict[predictorName]['lons'], predictordict[predictorName]['lats'])
+            # calculate correlation
+            r_matrix = np.zeros((nrowssst, ncolssst))
+            p_matrix = np.zeros((nrowssst, ncolssst))
             for row in range(nrowssst):
                 for col in range(ncolssst):
-                    if corr[row][col]:
-                        corgrp_matrix[row][col] = coords_clustered[index]
-                        index = index + 1
-        # generate correlation group matrices
-        basin_arr = ['Basin' + str(x) for x in basins]
-        basin_arr.insert(0, fcstPeriod)
-        basin_arr.insert(0, 'year')
-        corr_df = pd.DataFrame(columns=basin_arr)
-        corr_df['year'] = trainingYears
-        corr_df[fcstPeriod] = trainPredictant
-        corr_df.set_index('year', inplace=True)
-        for yr in range(nyearssst):
-            year = yearssst[yr]
-            sstavg = np.zeros(SSTzones)
-            corr_df.loc[year, fcstPeriod] = list(seasonal_precip.loc[[year], fcstPeriod])[0]
-            for group in range(SSTzones):
-                sstavg[group] = "{0:.3f}".format(np.mean(sst_arr[yr][corgrp_matrix == basins[group]]))
-                corr_df.loc[year, 'Basin' + str(basins[group])] = sstavg[group]
-        corr_df = corr_df.dropna(how='all', axis=1)
-        basin_arr = list(corr_df.columns)
-        indx = basin_arr.index(fcstPeriod)
-        basin_arr.pop(indx)
-        # basins = [x.replace('Basin','') for x in basin_arr]
-        if len(basin_arr) == 0:
-            continue
-        basin_matrix = np.array(corr_df[basin_arr])
-        corroutdir = outdir + os.sep + "Correlation"
-        writeout(prefix, p_matrix, corgrp_matrix, corr_df, predictordict[predictorName]['lats'],
-                 predictordict[predictorName]['lons'], corroutdir, config)
-
-        # get basin combination with highest r-square: returns bestr2score, final_basins, final_basin_matrix
-        basin_matrix_df = pd.DataFrame(basin_matrix[:len(trainingYears)], columns=basin_arr)
-        notnull = np.isfinite(np.array(predictant[:len(trainingYears)]))
-        try:
-            final_basins, comments = stepwise_selection(basin_matrix_df[notnull].astype(float),
-                                                    list(predictant[:len(trainingYears)][notnull]),
-                                                    initial_list=basin_arr, threshold_out=config.get('stepwisePvalue'))
-        except:
-            final_basins = basin_arr[:]
-            comments = []
-        selected_basins = final_basins[:]
-        if len(final_basins) == 0:
-            selected_basins = basin_arr[:]
-            final_basins = basin_arr[:]
-            comments = []
-        selected_basins.insert(0, 'y_intercept')
-        comments.append("Final basins: " + str(final_basins))
-        csv = corroutdir + os.sep + prefix + '_forward-selection.csv'
-        comment_df = pd.DataFrame(columns=['Comment'])
-        comment_df['Comment'] = comments
-        if int(config.get('plots', {}).get('corrcsvs', 1)) == 1: comment_df.to_csv(csv, header=True, index=False)
-
-        combo_basin_matrix = np.zeros((len(yearssst), len(final_basins))) * np.nan
-        # loop for all years where SST is available
-        for yr in range(len(yearssst)):
-            for group in range(len(final_basins)):
+                    sstvals = np.array(trainSST[:, row][:, col], dtype=float)
+                    warnings.filterwarnings('error')
+                    try:
+                        notnull = pnotnull & np.isfinite(sstvals)
+                        r_matrix[row][col], p_matrix[row][col] = pearsonr(trainPredictant[notnull], sstvals[notnull])
+                    except:
+                        pass
+            # corr = (p_matrix <= config['PValue']) & (abs(r_matrix) >= 0.5)
+            corr = (p_matrix <= config['PValue']) & (p_matrix != 0)
+            if not corr.any():
+                continue
+            corr_coords = list(zip(lons2d[corr], lats2d[corr]))
+            # create correlation basins
+            corgrp_matrix = np.zeros((nrowssst, ncolssst)) * np.nan
+    
+            minx = float(config.get('basinbounds',{}).get('minlon', -180))
+            maxx = float(config.get('basinbounds',{}).get('maxlon', 366))
+            miny = float(config.get('basinbounds',{}).get('minlat', -90))
+            maxy = float(config.get('basinbounds',{}).get('maxlat', 90))
+            roi = [False] * len(corr_coords)
+            for i in range(len(corr_coords)):
+                if corr_coords[i][0] < minx or corr_coords[i][0] > maxx or corr_coords[i][1] < miny or \
+                        corr_coords[i][1] > maxy:
+                    roi[i] = True
+    
+            db = dbcluster(corr_coords, 'dbscan', 5, SSTclusterSize, 3, 2)
+            coords_clustered = np.array(db.labels_)
+            coords_clustered[roi] = -1
+            uniq = list(set(coords_clustered))
+            minpixelperbasin = 6
+            for zone in uniq:
+                count = len(coords_clustered[coords_clustered == zone])
+                if count < minpixelperbasin: coords_clustered[coords_clustered == zone] = -1
+    
+            basins = list(set(coords_clustered[coords_clustered != -1]))
+            SSTzones = len(basins)
+            if corr[corr == True].shape == coords_clustered.shape:
+                index = 0
+                for row in range(nrowssst):
+                    for col in range(ncolssst):
+                        if corr[row][col]:
+                            corgrp_matrix[row][col] = coords_clustered[index]
+                            index = index + 1
+            # generate correlation group matrices
+            basin_arr = ['Basin' + str(x) for x in basins]
+            basin_arr.insert(0, fcstPeriod)
+            basin_arr.insert(0, 'year')
+            corr_df = pd.DataFrame(columns=basin_arr)
+            corr_df['year'] = trainingYears
+            corr_df[fcstPeriod] = trainPredictant
+            corr_df.set_index('year', inplace=True)
+            for yr in range(nyearssst):
+                year = yearssst[yr]
+                sstavg = np.zeros(SSTzones)
+                corr_df.loc[year, fcstPeriod] = list(seasonal_precip.loc[[year], fcstPeriod])[0]
+                for group in range(SSTzones):
+                    sstavg[group] = "{0:.3f}".format(np.mean(sst_arr[yr][corgrp_matrix == basins[group]]))
+                    corr_df.loc[year, 'Basin' + str(basins[group])] = sstavg[group]
+            corr_df = corr_df.dropna(how='all', axis=1)
+            basin_arr = list(corr_df.columns)
+            indx = basin_arr.index(fcstPeriod)
+            basin_arr.pop(indx)
+            # basins = [x.replace('Basin','') for x in basin_arr]
+            if len(basin_arr) == 0:
+                continue
+            basin_matrix = np.array(corr_df[basin_arr])
+            corroutdir = outdir + os.sep + "Correlation"
+            writeout(prefix, p_matrix, corgrp_matrix, corr_df, predictordict[predictorName]['lats'],
+                     predictordict[predictorName]['lons'], corroutdir, config)
+    
+            # get basin combination with highest r-square: returns bestr2score, final_basins, final_basin_matrix
+            basin_matrix_df = pd.DataFrame(basin_matrix[:len(trainingYears)], columns=basin_arr)
+            notnull = np.isfinite(np.array(predictant[:len(trainingYears)]))
+            try:
+                final_basins, comments = stepwise_selection(basin_matrix_df[notnull].astype(float),
+                                                        list(predictant[:len(trainingYears)][notnull]),
+                                                        initial_list=basin_arr, threshold_out=config.get('stepwisePvalue'))
+            except:
+                final_basins = basin_arr[:]
+                comments = []
+            selected_basins = final_basins[:]
+            if len(final_basins) == 0:
+                selected_basins = basin_arr[:]
+                final_basins = basin_arr[:]
+                comments = []
+            
+            comments.append("Final basins: " + str(final_basins))
+            csv = corroutdir + os.sep + prefix + '_forward-selection.csv'
+            comment_df = pd.DataFrame(columns=['Comment'])
+            comment_df['Comment'] = comments
+            if int(config.get('plots', {}).get('corrcsvs', 1)) == 1: comment_df.to_csv(csv, header=True, index=False)
+            
+            combo_basin_matrix = np.zeros((len(yearssst), len(final_basins))) * np.nan
+            # loop for all years where SST is available
+            for yr in range(len(yearssst)):
+                for group in range(len(final_basins)):
+                    # get corresponding sst average for the group from main basin_matrix
+                    combo_basin_matrix[yr][group] = basin_matrix[yr][basin_arr.index(final_basins[group])]
+    
+            nbasins = len(final_basins)
+        else:            
+            nbasins = 1
+            selected_basins = [prefixParam["Param"]]
+            combo_basin_matrix = np.zeros((len(yearssst), nbasins)) * np.nan
+            # loop for all years where SST is available
+            for yr in range(len(yearssst)):
                 # get corresponding sst average for the group from main basin_matrix
-                combo_basin_matrix[yr][group] = basin_matrix[yr][basin_arr.index(final_basins[group])]
+                combo_basin_matrix[yr][0] = sst_arr[yr]
 
-        nbasins = len(final_basins)
+        selected_basins.insert(0, 'y_intercept')
         training_Xmatrix = combo_basin_matrix[:len(trainingYears)]
         testing_Xmatrix = combo_basin_matrix[len(trainingYears):]
         testing_years = yearssst[len(trainingYears):]
@@ -1576,6 +1665,12 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                         mlp_fcstdf = pd.concat([mlp_traindf, mlp_fcstdf], ignore_index=False)
                     mlp_fcstdf.rename(columns={'MLPfcst': predictorName +'_MLP'}, inplace=True)
                     stationYF_dfs.append(mlp_fcstdf)
+                    
+                    if (nbasins == 1) and (int(config.get('plots', {}).get('regrcsvs', 1)) == 1):
+                        graphcpng = mlpdirout + os.sep + prefix + '_correlation-graph.png'
+                        graphdf = mlp_fcstdf.copy()
+                        graphdf[prefixParam["Param"]] = sst_arr
+                        plot_correlation_graph(graphdf, fcstPeriod, predictorName, predictorName + '_MLP', graphcpng)
 
             if algorithm == 'LR':
                 # start_time = time.time()
@@ -1613,7 +1708,7 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                 reg_df.loc[0] = coeff_arr
                 csv = lrdirout+ os.sep + prefix + '_correlation-formula.csv'
                 if int(config.get('plots', {}).get('regrcsvs', 1)) == 1: reg_df.to_csv(csv, index=False)
-                #
+                
                 q1, q2, q3, pmedian, famnt, fclass, HS, Prob, cgtable_df, skill_df = \
                     run_model_skill(lr_fcstdf, fcstPeriod, 'LRfcst', r2score, training_actual)
                 csv = lrdirout + os.sep + prefix + '_score-contingency-table.csv'
@@ -1625,8 +1720,15 @@ def forecast_station(config, predictordict, predictantdict, fcstPeriod, outdir, 
                 forecastdf = forecastdf.append(a_series, ignore_index=True)
                 if int(config.get('plots', {}).get('trainingraphs', 0)) == 1:
                     lr_fcstdf = pd.concat([lr_traindf, lr_fcstdf], ignore_index=False)
+                    
                 lr_fcstdf.rename(columns={'LRfcst': predictorName + '_LR'}, inplace=True)
                 stationYF_dfs.append(lr_fcstdf)
+                
+                if (nbasins == 1) and (int(config.get('plots', {}).get('regrcsvs', 1)) == 1):
+                    graphcpng = lrdirout+ os.sep + prefix + '_correlation-graph.png'
+                    graphdf = lr_fcstdf.copy()
+                    graphdf[prefixParam["Param"]] = sst_arr
+                    plot_correlation_graph(graphdf, fcstPeriod, predictorName, predictorName + '_LR', graphcpng)
 
     # plot the forecast graphs
     if (len(stationYF_dfs) > 0) and (int(config.get('plots', {}).get('fcstgraphs', 1)) == 1):

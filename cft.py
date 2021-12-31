@@ -21,7 +21,7 @@ pwd = os.path.dirname(os.path.realpath('__file__'))
 qtCreatorFile = "cft.ui"
 
 # Global Variables
-version = '1.4.2'
+version = '1.4.3'
 months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 seasons = ['JFM','FMA','MAM','AMJ','MJJ','JJA','JAS','ASO','SON','OND','NDJ','DJF']
 month_start_season = {'JFM': 'Jan', 'FMA': 'Feb', 'MAM': 'Mar', 'AMJ': 'Apr', 'MJJ': 'May', 'JJA': 'Jun', 'JAS': 'Jul',
@@ -113,7 +113,7 @@ if __name__ == "__main__":
     def addPredictors():
         global config
         fileNames = QtWidgets.QFileDialog.getOpenFileNames(window,
-                    'Add File(s)', '..' + os.sep, filter="NetCDF File (*.nc*)")
+                    'Add File(s)', '..' + os.sep, filter="NetCDF/CSV Files (*.nc* *.csv *.txt)")
         for fileName in fileNames[0]:
             config['predictorList'].append(fileName)
             window.predictorlistWidget.addItem(os.path.basename(fileName))
@@ -366,14 +366,30 @@ if __name__ == "__main__":
 
         for predictor in config.get('predictorList'):
             if os.path.isfile(predictor):
-                predictorName = os.path.splitext(os.path.basename(predictor))[0]
-                predictordict[predictorName] = {}
+                predictorName, predictorExt = os.path.splitext(os.path.basename(predictor))
                 window.statusbar.showMessage('checking ' + predictorName)
-                predictor_data = netcdf_data(predictor)
+                predictorExt = predictorExt.replace('.', '')
+                if predictorExt.lower() in ['nc']: 
+                    try:
+                        predictor_data = netcdf_data(predictor)
+                    except:
+                        status = 'error in reading ' + predictorName + ', check format'
+                        print(status)
+                        window.statusbar.showMessage(status)
+                        exit()
+                else:
+                    try:
+                        predictor_data = csv_data(predictor, predictorMonth, predictorName.replace(' ', '_'))
+                    except:
+                        status = 'error in reading ' + predictorName + ', check format'
+                        print(status)
+                        window.statusbar.showMessage(status)
+                        exit()
                 predmon = month_dict.get(predictorMonth.lower(), None)
                 param = predictor_data.param
                 timearr = predictor_data.times()
                 sst = predictor_data.tslice()
+                predictordict[predictorName] = {}
                 predictordict[predictorName]['lats'] = predictor_data.lats
                 predictordict[predictorName]['lons'] = predictor_data.lons
                 rows, cols = predictor_data.shape()
@@ -426,7 +442,10 @@ if __name__ == "__main__":
                          str(predictorEndYr) + predictorMonth
                 print(status)
                 predictor_years = list(range(predictorStartYr, predictorEndYr + 1))
-                sst_arr = np.zeros((len(predictor_years), rows, cols)) * np.nan
+                if predictor_data.shape() == (0, 0):
+                    sst_arr = np.zeros((len(predictor_years))) * np.nan
+                else:
+                    sst_arr = np.zeros((len(predictor_years), rows, cols)) * np.nan
                 for y in range(len(predictor_years)):
                     year = predictor_years[y]
                     indxyear = year_arr.index(year)
@@ -625,7 +644,7 @@ if __name__ == "__main__":
                         config.get('fcstyear')) + ' ' + fcstPeriod + ' using ' + \
                                          predictorMonth + ' initial conditions'
                     output.comments = 'Created ' + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
-                    output.source = 'SADC-CFTv' + config.get('Version', '1.4.2')
+                    output.source = 'SADC-CFTv' + config.get('Version', '1.4.3')
                     output.history = comments
                     lat = output.createDimension('lat', rows)
                     lon = output.createDimension('lon', cols)

@@ -19,7 +19,7 @@ size = comm.Get_size()
 rank = comm.Get_rank()
 
 # Global Variables
-version = '1.4.2'
+version = '1.4.3'
 months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 seasons = ['JFM','FMA','MAM','AMJ','MJJ','JJA','JAS','ASO','SON','OND','NDJ','DJF']
 csvheader = 'Year,Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec'
@@ -436,7 +436,7 @@ if __name__ == "__main__":
                 output.description = 'Forecast for ' + str(config.get('fcstyear')) + ' ' + fcstPeriod + ' using ' + \
                                      predictorMonth + ' initial conditions'
                 output.comments = 'Created ' + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
-                output.source = 'SADC-CFTv1.4.2'
+                output.source = 'SADC-CFTv1.4.3'
                 output.history = comments
                 lat = output.createDimension('lat', rows)
                 lon = output.createDimension('lon', cols)
