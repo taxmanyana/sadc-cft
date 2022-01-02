@@ -19,7 +19,7 @@ size = comm.Get_size()
 rank = comm.Get_rank()
 
 # Global Variables
-version = '1.4.3'
+version = '1.4.2'
 months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 seasons = ['JFM','FMA','MAM','AMJ','MJJ','JJA','JAS','ASO','SON','OND','NDJ','DJF']
 csvheader = 'Year,Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec'
@@ -34,6 +34,7 @@ predictordict = {}
 predictantdict = {}
 predictantdict['stations'] = []
 predictantdict['data'] = None
+scriptpath = os.path.dirname(os.path.realpath(__file__))
 
 #
 def split_chunks(seq, size):
@@ -94,7 +95,8 @@ if __name__ == "__main__":
         config['algorithms'] = ['LR']
         config['basinbounds'] = {"minlat": -90, "maxlat": 90, "minlon": -180, "maxlon": 360}
         config['plots'] = {'basemap': 'data\sadc_countries.geojson', 'zonepoints': 1,
-                           'corrmaps': 1, 'corrcsvs': 1, 'regrcsvs': 1, 'fcstgraphs': 1, 'trainingraphs': 1}
+                           'fcstqml': scriptpath+os.sep+'styles'+os.sep+'fcstplot_new.qml', 'corrmaps': 1,
+                           'corrcsvs': 1, 'regrcsvs': 1, 'fcstgraphs': 1, 'trainingraphs': 1}
         config['colors'] = {'class0': '#ffffff', 'class1': '#d2b48c', 'class2': '#fbff03', 'class3': '#0bfffb',
                             'class4': '#1601fc'}
         print("Default settings loaded.")
@@ -201,10 +203,24 @@ if __name__ == "__main__":
         st, pr, alg = comb
         algorithm = config.get('algorithms')[alg]
         predictor = config.get('predictorList')[pr]
-        predictorName = os.path.splitext(os.path.basename(predictor))[0]
+        predictorName, predictorExt = os.path.splitext(os.path.basename(predictor))
         print('rank', rank, '|', st, '|', predictorName, '|', algorithm)
         predictordict['Name'] = predictorName
-        predictor_data = netcdf_data(predictor)
+        predictorExt = predictorExt.replace('.', '')
+        if predictorExt.lower() in ['nc']: 
+            try:
+                predictor_data = netcdf_data(predictor)
+            except:
+                status = 'error in reading ' + predictorName + ', check format'
+                print(status)
+                exit()
+        else:
+            try:
+                predictor_data = csv_data(predictor, predictorMonth, predictorName.replace(' ', '_'))
+            except:
+                status = 'error in reading ' + predictorName + ', check format'
+                print(status)
+                exit()
         predmon = month_dict.get(predictorMonth.lower(), None)
         param = predictor_data.param
         timearr = predictor_data.times()
@@ -253,7 +269,10 @@ if __name__ == "__main__":
             print(status)
             continue
         predictor_years = list(range(predictorStartYr, predictorEndYr + 1))
-        sst_arr = np.zeros((len(predictor_years), rows, cols)) * np.nan
+        if predictor_data.shape() == (0, 0):
+            sst_arr = np.zeros((len(predictor_years))) * np.nan
+        else:
+            sst_arr = np.zeros((len(predictor_years), rows, cols)) * np.nan
         for y in range(len(predictor_years)):
             year = predictor_years[y]
             indxyear = year_arr.index(year)
@@ -433,10 +452,11 @@ if __name__ == "__main__":
                 # generate NETCDF
                 outfile = fcstjsonout = forecastdir + os.sep + fcstprefix + '_forecast.nc'
                 output = Dataset(outfile, 'w', format='NETCDF4')
-                output.description = 'Forecast for ' + str(config.get('fcstyear')) + ' ' + fcstPeriod + ' using ' + \
+                title = 'Forecast for ' + str(config.get('fcstyear')) + ' ' + fcstPeriod + ' using ' + \
                                      predictorMonth + ' initial conditions'
+                output.description = title
                 output.comments = 'Created ' + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
-                output.source = 'SADC-CFTv1.4.3'
+                output.source = config.get('Version')
                 output.history = comments
                 lat = output.createDimension('lat', rows)
                 lon = output.createDimension('lon', cols)
@@ -470,8 +490,6 @@ if __name__ == "__main__":
 
                 latitudes[:] = predictant_data.lats
                 longitudes[:] = predictant_data.lons
-                # fcstclass[:] = np.ma.array(np.flip(fclass, axis=0), mask=~np.isfinite(np.flip(fclass, axis=0)),
-                #                            fill_value=0)
                 fcstclass[:] = fclass
                 hitscore[:] = HS
                 forecast[:] = fcst
@@ -479,19 +497,13 @@ if __name__ == "__main__":
                 tercile2[:] = t2
                 tercile1[:] = t1
                 fcstplot[:] = fplot
-                # fcstclass[:] = np.flip(fclass, axis=0)
-                # hitscore[:] = np.flip(HS, axis=0)
-                # forecast[:] = np.flip(fcst, axis=0)
-                # tercile3[:] = np.flip(t3, axis=0)
-                # tercile2[:] = np.flip(t2, axis=0)
-                # tercile1[:] = np.flip(t1, axis=0)
-                # fcstplot[:] = np.flip(fplot, axis=0)
                 fcstclass.units = '1=BN, 2=NB, 3=NA, 4=AN'
                 fcstplot.units = '100 * (fcstclass - 1) + hitscore'
                 hitscore.units = '%'
                 output.close()
+                qmlfile = config.get('plots', {}).get('fcstqml', scriptpath+os.sep+'styles'+os.sep+'fcstplot_new.qml')
+                outfcstpng = fcstjsonout = forecastdir + os.sep + fcstprefix + '_forecast.png'
+                plot_forecast_png(predictant_data.lats, predictant_data.lons, fplot, title, qmlfile, outfcstpng)
                 print('Done in ' + str(convert(time.time() - start_time)))
-                # warning.setncattr('grid_mapping', 'spatial_ref')
-                # crs = output.createVariable('spatial_ref', 'i4')
-                # crs.spatial_ref = 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]'
         print("\nEnd time:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    

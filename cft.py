@@ -21,7 +21,7 @@ pwd = os.path.dirname(os.path.realpath('__file__'))
 qtCreatorFile = "cft.ui"
 
 # Global Variables
-version = '1.4.3'
+version = '1.4.2'
 months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 seasons = ['JFM','FMA','MAM','AMJ','MJJ','JJA','JAS','ASO','SON','OND','NDJ','DJF']
 month_start_season = {'JFM': 'Jan', 'FMA': 'Feb', 'MAM': 'Mar', 'AMJ': 'Apr', 'MJJ': 'May', 'JJA': 'Jun', 'JAS': 'Jul',
@@ -100,7 +100,8 @@ if __name__ == "__main__":
         config['algorithms'] = ['LR']
         config['basinbounds'] = {"minlat": -90, "maxlat": 90, "minlon": -180, "maxlon": 360}
         config['plots'] = {'basemap': 'data' + os.sep + 'sadc_countries.geojson', 'zonepoints': 1,
-                           'corrmaps': 1, 'corrcsvs': 1, 'regrcsvs': 1, 'fcstgraphs': 1, 'trainingraphs': 1}
+                           'fcstqml': 'styles'+os.sep+'fcstplot_new.qml', 'corrmaps': 1,
+                           'corrcsvs': 1, 'regrcsvs': 1, 'fcstgraphs': 1, 'trainingraphs': 1}
         config['colors'] = {'class0': '#ffffff', 'class1': '#d2b48c', 'class2': '#fbff03', 'class3': '#0bfffb',
                             'class4': '#1601fc'}
         window.statusbar.showMessage("Default settings loaded.")
@@ -640,11 +641,12 @@ if __name__ == "__main__":
                     # generate NETCDF
                     outfile = fcstjsonout = forecastdir + os.sep + fcstprefix + '_forecast.nc'
                     output = Dataset(outfile, 'w', format='NETCDF4')
-                    output.description = 'Forecast for ' + str(
+                    title = 'Forecast for ' + str(
                         config.get('fcstyear')) + ' ' + fcstPeriod + ' using ' + \
                                          predictorMonth + ' initial conditions'
+                    output.description = title
                     output.comments = 'Created ' + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
-                    output.source = 'SADC-CFTv' + config.get('Version', '1.4.3')
+                    output.source = 'SADC-CFTv' + config.get('Version')
                     output.history = comments
                     lat = output.createDimension('lat', rows)
                     lon = output.createDimension('lon', cols)
@@ -689,6 +691,9 @@ if __name__ == "__main__":
                     fcstplot.units = '100 * (fcstclass - 1) + hitscore'
                     hitscore.units = '%'
                     output.close()
+                    qmlfile = config.get('plots', {}).get('fcstqml', 'styles'+os.sep+'fcstplot_new.qml')
+                    outfcstpng = fcstjsonout = forecastdir + os.sep + fcstprefix + '_forecast.png'
+                    plot_forecast_png(predictant_data.lats, predictant_data.lons, fplot, title, qmlfile, outfcstpng)
                     window.statusbar.showMessage('Done in '+str(convert(time.time()-start_time)))
                     print('Done in ' + str(convert(time.time() - start_time)))
                 else:

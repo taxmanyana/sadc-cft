@@ -92,6 +92,6 @@ Feature: Generate CSV of selected members which meet HS and POD filtering
 v1.4.3 - 29 December 2021
 Feature: Allow CSV predictor format
 Feature: Plot predicated vs predictor graphs (correlation formula graph) for single variable predictor
-
+Feature: Add forecast png for NetCDF predictand
 
 
