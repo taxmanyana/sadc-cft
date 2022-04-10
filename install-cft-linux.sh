@@ -20,7 +20,24 @@ cd $cwd
 mkdir -p source 
 if [ -d source ]; then
   cd $cwd/source
-  wget https://www.openssl.org/source/openssl-3.0.0-alpha13.tar.gz -c
+  wget --no-check-certificate http://www.cpan.org/src/5.0/perl-5.20.1.tar.gz -c
+  if [[ $? -ne 0 ]]; then
+     echo "error, could not download perl. check URL in the script and update if necessary"
+     exit
+  fi
+  lib=$(find ./ -maxdepth 1 -name "perl-*" -type f | tail -1)
+  if [ -n $lib ]; then
+    echo
+    echo "installing ${lib##*/}..."
+    tar xf $lib
+    cd $(find ./ -maxdepth 1 -name "perl-*" -type d)
+    ./Configure -des -Dprefix=${PYTHONPATH}
+    make
+    make install
+  fi
+  echo
+  cd $cwd/source
+  wget --no-check-certificate https://www.openssl.org/source/openssl-3.0.0-alpha13.tar.gz -c
   if [[ $? -ne 0 ]]; then
      echo "error, could not download openssl. check URL in the script and update if necessary"
      exit
@@ -41,7 +58,7 @@ if [ -d source ]; then
   fi
   echo
   cd $cwd/source
-  wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.4.tar.bz2 --no-check-certificate -c
+  wget --no-check-certificate https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.4.tar.bz2 --no-check-certificate -c
   if [[ $? -ne 0 ]]; then
      echo "error, could not download openmpi. check URL in the script and update if necessary"
      exit
@@ -57,7 +74,7 @@ if [ -d source ]; then
   fi
   echo
   cd $cwd/source
-  wget https://gcc.gnu.org/pub/libffi/libffi-3.3.tar.gz -c
+  wget --no-check-certificate https://gcc.gnu.org/pub/libffi/libffi-3.3.tar.gz -c
   if [[ $? -ne 0 ]]; then
      echo "error, could not download libffi. check URL in the script and update if necessary"
      exit
@@ -73,7 +90,7 @@ if [ -d source ]; then
   fi
   echo
   cd $cwd/source
-  wget https://deac-fra.dl.sourceforge.net/project/lzmautils/xz-5.2.5.tar.xz -c
+  wget --no-check-certificate https://deac-fra.dl.sourceforge.net/project/lzmautils/xz-5.2.5.tar.xz -c
   if [[ $? -ne 0 ]]; then
      echo "error, could not download xz. check URL in the script and update if necessary"
      exit
@@ -89,7 +106,7 @@ if [ -d source ]; then
   fi
   echo
   cd $cwd/source
-  wget https://zlib.net/zlib-1.2.11.tar.gz -c
+  wget --no-check-certificate https://zlib.net/zlib-1.2.12.tar.gz -c
   if [[ $? -ne 0 ]]; then
      echo "error, could not download zlib. check URL in the script and update if necessary"
      exit
@@ -105,7 +122,7 @@ if [ -d source ]; then
   fi
   echo
   cd $cwd/source
-  wget https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz --no-check-certificate -c
+  wget --no-check-certificate https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz --no-check-certificate -c
   if [[ $? -ne 0 ]]; then
      echo "error, could not download bzip2. check URL in the script and update if necessary"
      exit
@@ -128,7 +145,7 @@ if [ -d source ]; then
   fi
   echo
   cd $cwd/source
-  wget https://www.python.org/ftp/python/3.8.5/Python-3.8.5.tar.xz -c
+  wget --no-check-certificate https://www.python.org/ftp/python/3.8.5/Python-3.8.5.tar.xz -c
   if [[ $? -ne 0 ]]; then
      echo "error, could not download Python. check URL in the script and update if necessary"
      exit
